@@ -1,0 +1,30 @@
+{
+  "properties": [
+    {
+      "name": "spring.application.name",
+      "type": "java.lang.String",
+      "description": "Application name used in OpenAPI documentation."
+    },
+    {
+      "name": "spring.application.version",
+      "type": "java.lang.String",
+      "description": "Application version used in OpenAPI documentation."
+    },
+    {
+      "name": "spring.application.description",
+      "type": "java.lang.String",
+      "description": "Application description used in OpenAPI documentation."
+    },
+    {
+      "name": "spring.application.team.name",
+      "type": "java.lang.String",
+      "description": "Team name used in OpenAPI documentation contact information."
+    },
+    {
+      "name": "spring.application.team.email",
+      "type": "java.lang.String",
+      "description": "Team email used in OpenAPI documentation contact information."
+    }
+  ],
+  "hints": []
+}
