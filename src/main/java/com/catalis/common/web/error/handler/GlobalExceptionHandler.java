@@ -125,7 +125,7 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
                 .error("Internal Server Error")
-                .message("An unexpected error occurred")
+                .message("An unexpected error occurred: " + ex.getMessage())
                 .path(exchange.getRequest().getPath().value())
                 .build();
 
