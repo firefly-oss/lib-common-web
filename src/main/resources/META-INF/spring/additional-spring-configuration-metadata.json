@@ -24,6 +24,31 @@
       "name": "spring.application.team.email",
       "type": "java.lang.String",
       "description": "Team email used in OpenAPI documentation contact information."
+    },
+    {
+      "name": "spring.application.team.url",
+      "type": "java.lang.String",
+      "description": "Team URL used in OpenAPI documentation contact information."
+    },
+    {
+      "name": "spring.application.license.name",
+      "type": "java.lang.String",
+      "description": "License name used in OpenAPI documentation."
+    },
+    {
+      "name": "spring.application.license.url",
+      "type": "java.lang.String",
+      "description": "License URL used in OpenAPI documentation."
+    },
+    {
+      "name": "openapi.security.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether to enable security definitions in OpenAPI documentation."
+    },
+    {
+      "name": "openapi.servers.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether to enable server definitions in OpenAPI documentation."
     }
   ],
   "hints": []
