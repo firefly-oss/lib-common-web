@@ -1,14 +1,6 @@
 # Firefly Common Web Library
 
-[![Maven Central](https://img.shields.io/badge/Maven%20Central-1.0.0--SNAPSHOT-blue)](https://search.maven.org/artifact/com.catalis/lib-common-web)
-[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-brightgreen)](https://spring.io/projects/spring-boot)
-
 A comprehensive library for Spring WebFlux applications in the Firefly platform, providing standardized error handling, OpenAPI documentation, idempotency support, and other essential web-related utilities.
-
-<div align="center">
-  <img src="https://spring.io/images/spring-logo-9146a4d3298760c2e7e49595184e1975.svg" width="200" alt="Spring Logo">
-</div>
 
 ## 📋 Table of Contents
 
@@ -150,15 +142,15 @@ public class PaymentController {
             .map(payment -> ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(PaymentResponse.fromPayment(payment)))
-            .onErrorResume(PaymentDeclinedException.class, ex -> 
+            .onErrorResume(PaymentDeclinedException.class, ex ->
                 Mono.error(new InvalidRequestException(
-                    "PAYMENT_DECLINED", 
+                    "PAYMENT_DECLINED",
                     "Payment was declined: " + ex.getMessage()
                 ))
             )
             .onErrorResume(PaymentProviderException.class, ex ->
                 Mono.error(ServiceException.dependencyFailure(
-                    "Payment Provider", 
+                    "Payment Provider",
                     ex.getMessage()
                 ))
             );
@@ -283,7 +275,7 @@ This library is compatible with the following Spring Boot starters and libraries
 | Library | Compatible Versions | Notes |
 |---------|---------------------|-------|
 | `spring-boot-starter-webflux` | 3.x | Required dependency |
-| `spring-boot-starter-data-redis-reactive` | 3.x | Optional, for Redis-based idempotency caching |
+| `spring-boot-starter-data-redis-reactive` | 3.x | Required, for Redis-based idempotency caching |
 | `spring-boot-starter-security` | 3.x | Optional, for security integration |
 | `spring-boot-starter-validation` | 3.x | Optional, for validation support |
 | `springdoc-openapi-starter-webflux-ui` | 2.x | Optional, for OpenAPI documentation |
@@ -298,72 +290,47 @@ The library is designed to work seamlessly with other Spring Boot starters and l
 
 Here are some common use cases and examples of how to use the library in real-world scenarios:
 
-#### RESTful API with Error Handling and Idempotency
+#### Idempotency Support
 
-This example shows a complete controller for a payment processing API that uses the library's error handling and idempotency features:
+The library automatically adds idempotency support to all POST, PUT, and PATCH endpoints. This means:
+
+1. The `Idempotency-Key` header is automatically added to the OpenAPI documentation for these endpoints
+2. Requests with the same idempotency key will only be processed once
+3. Subsequent requests with the same key will receive the cached response
+
+Here's how to disable idempotency for specific endpoints when you don't need it:
 
 ```java
 @RestController
-@RequestMapping("/api/payments")
-public class PaymentController {
-    private static final Logger log = LoggerFactory.getLogger(PaymentController.class);
-    private final PaymentService paymentService;
+@RequestMapping("/api/resources")
+public class ResourceController {
+    private final ResourceService resourceService;
 
-    public PaymentController(PaymentService paymentService) {
-        this.paymentService = paymentService;
+    public ResourceController(ResourceService resourceService) {
+        this.resourceService = resourceService;
     }
 
+    // This endpoint has automatic idempotency support
+    // Clients should include an Idempotency-Key header
     @PostMapping
-    @Operation(summary = "Process a payment", description = "Processes a payment transaction")
-    @ApiResponses({
-        @ApiResponse(responseCode = "201", description = "Payment processed successfully"),
-        @ApiResponse(responseCode = "400", description = "Invalid payment details"),
-        @ApiResponse(responseCode = "409", description = "Payment already processed (idempotency)")
-    })
-    public Mono<ResponseEntity<PaymentResponse>> processPayment(
-            @Valid @RequestBody PaymentRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = true) String idempotencyKey) {
-
-        log.info("Processing payment request with idempotency key: {}", idempotencyKey);
-
-        return paymentService.processPayment(request)
-            .map(payment -> ResponseEntity
+    public Mono<ResponseEntity<ResourceResponse>> createResource(
+            @Valid @RequestBody ResourceRequest request) {
+        return resourceService.createResource(request)
+            .map(resource -> ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(PaymentResponse.fromPayment(payment)))
-            .doOnSuccess(response -> log.info("Payment processed successfully"))
-            .onErrorResume(PaymentDeclinedException.class, ex -> {
-                log.warn("Payment declined: {}", ex.getMessage());
-                return Mono.error(new InvalidRequestException(
-                    "PAYMENT_DECLINED", 
-                    "Payment was declined: " + ex.getMessage()
-                ));
-            })
-            .onErrorResume(PaymentProviderException.class, ex -> {
-                log.error("Payment provider error: {}", ex.getMessage(), ex);
-                return Mono.error(ServiceException.dependencyFailure(
-                    "Payment Provider", 
-                    ex.getMessage()
-                ));
-            });
+                .body(ResourceResponse.fromResource(resource)));
     }
 
-    @GetMapping("/{id}")
-    @Operation(summary = "Get payment details", description = "Retrieves details of a specific payment")
-    public Mono<PaymentResponse> getPayment(@PathVariable String id) {
-        return paymentService.findPayment(id)
-            .switchIfEmpty(Mono.error(
-                ResourceNotFoundException.forResource("Payment", id)
-            ))
-            .map(PaymentResponse::fromPayment);
-    }
-
-    @GetMapping
-    @Operation(summary = "List payments", description = "Retrieves a list of payments with pagination")
-    public Flux<PaymentResponse> listPayments(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return paymentService.listPayments(page, size)
-            .map(PaymentResponse::fromPayment);
+    // This endpoint has idempotency disabled
+    // The @DisableIdempotency annotation prevents idempotency processing
+    @PostMapping("/non-idempotent")
+    @DisableIdempotency
+    public Mono<ResponseEntity<ResourceResponse>> createNonIdempotentResource(
+            @Valid @RequestBody ResourceRequest request) {
+        return resourceService.createResource(request)
+            .map(resource -> ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ResourceResponse.fromResource(resource)));
     }
 }
 ```
@@ -444,24 +411,24 @@ public class ExternalPaymentService {
             .bodyToMono(PaymentResult.class)
             .timeout(Duration.ofSeconds(10))
             .doOnError(WebClientResponseException.class, ex -> {
-                log.error("Payment provider returned error: {} - {}", 
+                log.error("Payment provider returned error: {} - {}",
                     ex.getStatusCode(), ex.getResponseBodyAsString());
             })
-            .onErrorResume(WebClientResponseException.NotFound.class, ex -> 
+            .onErrorResume(WebClientResponseException.NotFound.class, ex ->
                 Mono.error(ServiceException.dependencyFailure(
-                    "Payment Provider", 
+                    "Payment Provider",
                     "The requested resource was not found"
                 ))
             )
-            .onErrorResume(WebClientResponseException.BadRequest.class, ex -> 
+            .onErrorResume(WebClientResponseException.BadRequest.class, ex ->
                 Mono.error(new InvalidRequestException(
-                    "INVALID_PAYMENT_REQUEST", 
+                    "INVALID_PAYMENT_REQUEST",
                     "The payment provider rejected the request: " + ex.getResponseBodyAsString()
                 ))
             )
-            .onErrorResume(TimeoutException.class, ex -> 
+            .onErrorResume(TimeoutException.class, ex ->
                 Mono.error(ServiceException.dependencyFailure(
-                    "Payment Provider", 
+                    "Payment Provider",
                     "The request timed out after 10 seconds"
                 ))
             );
@@ -553,7 +520,7 @@ throw ResourceNotFoundException.forResource("User", "123");
 throw new InvalidRequestException("Invalid input parameters");
 
 // Using factory method
-throw InvalidRequestException.forField("email", "invalid-email", 
+throw InvalidRequestException.forField("email", "invalid-email",
     "must be a valid email format");
 ```
 
@@ -569,7 +536,7 @@ throw InvalidRequestException.forField("email", "invalid-email",
 throw new ConflictException("User already exists");
 
 // Using factory method
-throw ConflictException.resourceAlreadyExists("User", 
+throw ConflictException.resourceAlreadyExists("User",
     "john.doe@example.com");
 ```
 
@@ -618,7 +585,7 @@ throw new ServiceException("Database connection failed");
 
 // Using factory methods
 throw ServiceException.withCause("Failed to process request", exception);
-throw ServiceException.dependencyFailure("Payment Service", 
+throw ServiceException.dependencyFailure("Payment Service",
     "Timeout after 30s");
 ```
 
@@ -631,7 +598,7 @@ throw ServiceException.dependencyFailure("Payment Service",
 
 ```java
 // With multiple field errors
-ValidationException.Builder validationBuilder = 
+ValidationException.Builder validationBuilder =
     new ValidationException.Builder()
         .addError("email", "must be a valid email")
         .addError("password", "must be at least 8 characters");
@@ -1309,8 +1276,6 @@ Yes, you can provide your own implementation of the `IdempotencyCache` interface
 If you have questions or need help with the library, there are several ways to get support:
 
 1. **GitHub Issues**: For bug reports and feature requests, please [open an issue](https://github.com/getfirefly/lib-common-web/issues) on GitHub.
-
-2. **Slack Channel**: Join our `#firefly-libraries` channel on the Firefly Software Solutions Inc Slack workspace for real-time discussions and support.
 
 3. **Internal Documentation**: Comprehensive internal documentation is available on the [Firefly Software Solutions Inc Confluence](https://getfirefly.atlassian.net/wiki/spaces/FIR/pages/123456789/Firefly+Common+Web+Library).
 
