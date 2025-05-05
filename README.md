@@ -344,7 +344,7 @@ spring:
     port: 6379
 ```
 
-> **Note**: The Redis dependency (`spring-boot-starter-data-redis-reactive`) is optional. If you want to use Redis for idempotency caching (`idempotency.cache.redis.enabled=true`), you need to include this dependency in your project and make sure Redis is properly configured and accessible. If Redis is not configured or the dependency is not included, the library will automatically fall back to using the in-memory cache.
+> **Note**: The Redis dependency (`spring-boot-starter-data-redis-reactive`) is included by default. When Redis is properly configured and `idempotency.cache.redis.enabled=true`, the library will use Redis for idempotency caching. If Redis is not configured or not accessible, the library will automatically fall back to using the in-memory cache.
 
 ## Configuration Properties
 

@@ -59,10 +59,7 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis-reactive</artifactId>
-            <optional>true</optional>
         </dependency>
-
-
 
         <!-- Spring Data (for exception classes) -->
         <dependency>
