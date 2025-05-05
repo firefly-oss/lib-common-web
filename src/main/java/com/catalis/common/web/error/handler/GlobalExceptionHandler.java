@@ -103,25 +103,31 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
                 .code(ex.getCode())
                 .metadata(ex.getMetadata());
 
-        // Add suggestion based on the exception type
-        if (ex.getStatus() == HttpStatus.NOT_FOUND) {
-            builder.suggestion("Verify the resource identifier and ensure it exists.");
-        } else if (ex.getStatus() == HttpStatus.BAD_REQUEST) {
-            builder.suggestion("Check your request parameters and try again.");
-        } else if (ex.getStatus() == HttpStatus.UNAUTHORIZED) {
-            builder.suggestion("Please authenticate and try again.");
-        } else if (ex.getStatus() == HttpStatus.FORBIDDEN) {
-            builder.suggestion("You don't have permission to access this resource. Contact an administrator if you need access.");
-        } else if (ex.getStatus() == HttpStatus.CONFLICT) {
-            builder.suggestion("The request conflicts with the current state of the resource. Refresh and try again.");
-        } else if (ex.getStatus() == HttpStatus.TOO_MANY_REQUESTS) {
-            builder.suggestion("You've exceeded the rate limit. Please wait and try again later.");
-        } else if (ex.getStatus() == HttpStatus.PAYLOAD_TOO_LARGE) {
-            builder.suggestion("The request payload is too large. Try reducing the size of your request.");
-        } else if (ex.getStatus() == HttpStatus.UNSUPPORTED_MEDIA_TYPE) {
-            builder.suggestion("The request format is not supported. Check the Content-Type header.");
-        } else if (ex.getStatus() == HttpStatus.INTERNAL_SERVER_ERROR) {
-            builder.suggestion("An unexpected error occurred. Please contact support with the trace ID.");
+        // Add suggestion from metadata if available, otherwise use default suggestions
+        Map<String, Object> metadata = ex.getMetadata();
+        if (metadata != null && metadata.containsKey("suggestion")) {
+            builder.suggestion(metadata.get("suggestion").toString());
+        } else {
+            // Add suggestion based on the exception type
+            if (ex.getStatus() == HttpStatus.NOT_FOUND) {
+                builder.suggestion("Verify the resource identifier and ensure it exists.");
+            } else if (ex.getStatus() == HttpStatus.BAD_REQUEST) {
+                builder.suggestion("Check your request parameters and try again.");
+            } else if (ex.getStatus() == HttpStatus.UNAUTHORIZED) {
+                builder.suggestion("Please authenticate and try again.");
+            } else if (ex.getStatus() == HttpStatus.FORBIDDEN) {
+                builder.suggestion("You don't have permission to access this resource. Contact an administrator if you need access.");
+            } else if (ex.getStatus() == HttpStatus.CONFLICT) {
+                builder.suggestion("The request conflicts with the current state of the resource. Refresh and try again.");
+            } else if (ex.getStatus() == HttpStatus.TOO_MANY_REQUESTS) {
+                builder.suggestion("You've exceeded the rate limit. Please wait and try again later.");
+            } else if (ex.getStatus() == HttpStatus.PAYLOAD_TOO_LARGE) {
+                builder.suggestion("The request payload is too large. Try reducing the size of your request.");
+            } else if (ex.getStatus() == HttpStatus.UNSUPPORTED_MEDIA_TYPE) {
+                builder.suggestion("The request format is not supported. Check the Content-Type header.");
+            } else if (ex.getStatus() == HttpStatus.INTERNAL_SERVER_ERROR) {
+                builder.suggestion("An unexpected error occurred. Please contact support with the trace ID.");
+            }
         }
 
         // Add documentation link if available
@@ -253,17 +259,47 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
                 .traceId(UUID.randomUUID().toString())
                 .code("HTTP_STATUS_ERROR");
 
-        // Add suggestion based on the status code
-        if (ex.getStatusCode() == HttpStatus.NOT_FOUND) {
-            builder.suggestion("The requested resource could not be found. Please check the URL and try again.");
-        } else if (ex.getStatusCode() == HttpStatus.METHOD_NOT_ALLOWED) {
-            builder.suggestion("The HTTP method used is not allowed for this resource. Please check the documentation for allowed methods.");
-        } else if (ex.getStatusCode() == HttpStatus.UNSUPPORTED_MEDIA_TYPE) {
-            builder.suggestion("The request format is not supported. Please check the Content-Type header.");
-        } else if (ex.getStatusCode() == HttpStatus.BAD_REQUEST) {
-            builder.suggestion("The request was malformed. Please check your request parameters and try again.");
-        } else {
-            builder.suggestion("Please check your request and try again.");
+        // Try to convert the exception to get metadata with suggestions
+        try {
+            BusinessException convertedException = converterService.convertException(ex);
+            Map<String, Object> metadata = convertedException.getMetadata();
+
+            // Add metadata to the response
+            builder.metadata(metadata);
+
+            // Add suggestion from metadata if available
+            if (metadata != null && metadata.containsKey("suggestion")) {
+                builder.suggestion(metadata.get("suggestion").toString());
+            } else {
+                // Add suggestion based on the status code
+                if (ex.getStatusCode() == HttpStatus.NOT_FOUND) {
+                    builder.suggestion("The requested resource could not be found. Please check the URL and try again.");
+                } else if (ex.getStatusCode() == HttpStatus.METHOD_NOT_ALLOWED) {
+                    builder.suggestion("The HTTP method used is not allowed for this resource. Please check the documentation for allowed methods.");
+                } else if (ex.getStatusCode() == HttpStatus.UNSUPPORTED_MEDIA_TYPE) {
+                    builder.suggestion("The request format is not supported. Please check the Content-Type header.");
+                } else if (ex.getStatusCode() == HttpStatus.BAD_REQUEST) {
+                    builder.suggestion("The request was malformed. Please check your request parameters and try again.");
+                } else {
+                    builder.suggestion("Please check your request and try again.");
+                }
+            }
+        } catch (Exception conversionError) {
+            // If conversion fails, use default suggestions
+            log.debug("Error converting ResponseStatusException", conversionError);
+
+            // Add suggestion based on the status code
+            if (ex.getStatusCode() == HttpStatus.NOT_FOUND) {
+                builder.suggestion("The requested resource could not be found. Please check the URL and try again.");
+            } else if (ex.getStatusCode() == HttpStatus.METHOD_NOT_ALLOWED) {
+                builder.suggestion("The HTTP method used is not allowed for this resource. Please check the documentation for allowed methods.");
+            } else if (ex.getStatusCode() == HttpStatus.UNSUPPORTED_MEDIA_TYPE) {
+                builder.suggestion("The request format is not supported. Please check the Content-Type header.");
+            } else if (ex.getStatusCode() == HttpStatus.BAD_REQUEST) {
+                builder.suggestion("The request was malformed. Please check your request parameters and try again.");
+            } else {
+                builder.suggestion("Please check your request and try again.");
+            }
         }
 
         // Add documentation link

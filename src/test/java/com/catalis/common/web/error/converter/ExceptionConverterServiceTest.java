@@ -13,6 +13,11 @@ import org.springframework.web.client.HttpServerErrorException;
 import java.util.Arrays;
 import java.util.concurrent.TimeoutException;
 
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class ExceptionConverterServiceTest {
@@ -127,4 +132,7 @@ class ExceptionConverterServiceTest {
         assertEquals("UNEXPECTED_ERROR", result.getCode());
         assertTrue(result.getMessage().contains("Operation timed out"));
     }
+
+    // Note: Metadata is now added by the ExceptionMetadataAspect, not directly in the ExceptionConverterService
+    // These tests have been moved to ExceptionMetadataAspectTest
 }
