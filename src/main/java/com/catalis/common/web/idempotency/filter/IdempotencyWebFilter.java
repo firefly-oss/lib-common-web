@@ -4,6 +4,8 @@ import com.catalis.common.web.idempotency.annotation.DisableIdempotency;
 import com.catalis.common.web.idempotency.cache.IdempotencyCache;
 import com.catalis.common.web.idempotency.config.IdempotencyProperties;
 import com.catalis.common.web.idempotency.model.CachedResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.reactivestreams.Publisher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -35,6 +37,7 @@ import java.util.List;
 @EnableConfigurationProperties(IdempotencyProperties.class)
 public class IdempotencyWebFilter implements WebFilter {
 
+    private static final Logger log = LoggerFactory.getLogger(IdempotencyWebFilter.class);
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
     private static final List<HttpMethod> IDEMPOTENT_METHODS = Arrays.asList(
             HttpMethod.POST, HttpMethod.PUT, HttpMethod.PATCH);
@@ -57,26 +60,26 @@ public class IdempotencyWebFilter implements WebFilter {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
-        System.out.println("[DEBUG_LOG] IdempotencyWebFilter.filter: Processing request " + request.getMethod() + " " + request.getPath());
+        log.debug("IdempotencyWebFilter.filter: Processing request {} {}", request.getMethod(), request.getPath());
 
         // Only apply to POST, PUT, PATCH methods
         if (!IDEMPOTENT_METHODS.contains(request.getMethod())) {
-            System.out.println("[DEBUG_LOG] IdempotencyWebFilter.filter: Skipping non-idempotent method " + request.getMethod());
+            log.debug("IdempotencyWebFilter.filter: Skipping non-idempotent method {}", request.getMethod());
             return chain.filter(exchange);
         }
 
         // Check for Idempotency-Key header
         List<String> idempotencyKeyHeaders = request.getHeaders().get(IDEMPOTENCY_KEY_HEADER);
         if (idempotencyKeyHeaders == null || idempotencyKeyHeaders.isEmpty()) {
-            System.out.println("[DEBUG_LOG] IdempotencyWebFilter.filter: No Idempotency-Key header found");
+            log.debug("IdempotencyWebFilter.filter: No Idempotency-Key header found");
             return chain.filter(exchange);
         }
 
         String idempotencyKey = idempotencyKeyHeaders.get(0);
-        System.out.println("[DEBUG_LOG] IdempotencyWebFilter.filter: Found Idempotency-Key: " + idempotencyKey);
+        log.debug("IdempotencyWebFilter.filter: Found Idempotency-Key: {}", idempotencyKey);
 
         if (idempotencyKey == null || idempotencyKey.trim().isEmpty()) {
-            System.out.println("[DEBUG_LOG] IdempotencyWebFilter.filter: Empty Idempotency-Key header");
+            log.debug("IdempotencyWebFilter.filter: Empty Idempotency-Key header");
             return sendBadRequest(exchange, "Invalid Idempotency-Key header");
         }
 
@@ -85,21 +88,21 @@ public class IdempotencyWebFilter implements WebFilter {
                 .flatMap(disabled -> {
                     if (disabled) {
                         // Skip idempotency processing if the endpoint has the DisableIdempotency annotation
-                        System.out.println("[DEBUG_LOG] IdempotencyWebFilter.filter: Idempotency is disabled for this endpoint");
+                        log.debug("IdempotencyWebFilter.filter: Idempotency is disabled for this endpoint");
                         return chain.filter(exchange);
                     }
 
-                    System.out.println("[DEBUG_LOG] IdempotencyWebFilter.filter: Checking cache for key: " + idempotencyKey);
+                    log.debug("IdempotencyWebFilter.filter: Checking cache for key: {}", idempotencyKey);
                     // Check if we have a cached response
                     return cache.get(idempotencyKey)
                             .hasElement()
                             .flatMap(hasCachedResponse -> {
                                 if (hasCachedResponse) {
-                                    System.out.println("[DEBUG_LOG] IdempotencyWebFilter.filter: Found cached response for key: " + idempotencyKey);
+                                    log.debug("IdempotencyWebFilter.filter: Found cached response for key: {}", idempotencyKey);
                                     return cache.get(idempotencyKey)
                                             .flatMap(cachedResponse -> returnCachedResponse(exchange, cachedResponse));
                                 } else {
-                                    System.out.println("[DEBUG_LOG] IdempotencyWebFilter.filter: No cached response found for key: " + idempotencyKey);
+                                    log.debug("IdempotencyWebFilter.filter: No cached response found for key: {}", idempotencyKey);
                                     return processThroughFilterChain(exchange, chain, idempotencyKey);
                                 }
                             });
@@ -107,17 +110,17 @@ public class IdempotencyWebFilter implements WebFilter {
     }
 
     private Mono<Void> processThroughFilterChain(ServerWebExchange exchange, WebFilterChain chain, String idempotencyKey) {
-        System.out.println("[DEBUG_LOG] IdempotencyWebFilter.processThroughFilterChain: Processing request through filter chain for key: " + idempotencyKey);
+        log.debug("IdempotencyWebFilter.processThroughFilterChain: Processing request through filter chain for key: {}", idempotencyKey);
         ServerHttpResponse originalResponse = exchange.getResponse();
         ServerHttpResponseDecorator decoratedResponse = new ServerHttpResponseDecorator(originalResponse) {
             @Override
             public Mono<Void> writeWith(Publisher<? extends DataBuffer> body) {
-                System.out.println("[DEBUG_LOG] IdempotencyWebFilter.writeWith: Writing response for key: " + idempotencyKey);
+                log.debug("IdempotencyWebFilter.writeWith: Writing response for key: {}", idempotencyKey);
                 // Convert the body to a Flux regardless of its type
                 Flux<DataBuffer> fluxBody = Flux.from(body);
 
                 return super.writeWith(fluxBody.collectList().map(dataBuffers -> {
-                    System.out.println("[DEBUG_LOG] IdempotencyWebFilter.writeWith: Collected response body for key: " + idempotencyKey);
+                    log.debug("IdempotencyWebFilter.writeWith: Collected response body for key: {}", idempotencyKey);
                     // Combine all DataBuffers to get the complete response body
                     DataBuffer joinedBuffer = exchange.getResponse().bufferFactory().join(dataBuffers);
                     byte[] content = new byte[joinedBuffer.readableByteCount()];
@@ -131,20 +134,17 @@ public class IdempotencyWebFilter implements WebFilter {
                     int statusCode = exchange.getResponse().getStatusCode() != null ?
                             exchange.getResponse().getStatusCode().value() : HttpStatus.OK.value();
 
-                    System.out.println("[DEBUG_LOG] IdempotencyWebFilter.writeWith: Caching response for key: " + idempotencyKey + 
-                                      ", status: " + statusCode + 
-                                      ", contentType: " + contentType + 
-                                      ", bodyLength: " + content.length);
+                    log.debug("IdempotencyWebFilter.writeWith: Caching response for key: {}, status: {}, contentType: {}, bodyLength: {}", 
+                             idempotencyKey, statusCode, contentType, content.length);
 
                     CachedResponse cachedResponse = new CachedResponse(statusCode, content, contentType);
                     cache.put(idempotencyKey, cachedResponse)
                         .doOnError(e -> {
                             // Log the error but don't fail the request
-                            System.err.println("[DEBUG_LOG] Failed to cache response for idempotency key " + idempotencyKey + ": " + e.getMessage());
-                            e.printStackTrace();
+                            log.error("Failed to cache response for idempotency key {}: {}", idempotencyKey, e.getMessage(), e);
                         })
                         .onErrorResume(e -> Mono.empty())
-                        .doOnSuccess(v -> System.out.println("[DEBUG_LOG] IdempotencyWebFilter.writeWith: Successfully cached response for key: " + idempotencyKey))
+                        .doOnSuccess(v -> log.debug("IdempotencyWebFilter.writeWith: Successfully cached response for key: {}", idempotencyKey))
                         .subscribe();
 
                     return copiedBuffer;
@@ -153,15 +153,15 @@ public class IdempotencyWebFilter implements WebFilter {
         };
 
         return chain.filter(exchange.mutate().response(decoratedResponse).build())
-                .doOnSuccess(v -> System.out.println("[DEBUG_LOG] IdempotencyWebFilter.processThroughFilterChain: Successfully processed request through filter chain for key: " + idempotencyKey))
-                .doOnError(e -> System.err.println("[DEBUG_LOG] IdempotencyWebFilter.processThroughFilterChain: Error processing request through filter chain for key: " + idempotencyKey + ": " + e.getMessage()));
+                .doOnSuccess(v -> log.debug("IdempotencyWebFilter.processThroughFilterChain: Successfully processed request through filter chain for key: {}", idempotencyKey))
+                .doOnError(e -> log.error("IdempotencyWebFilter.processThroughFilterChain: Error processing request through filter chain for key: {}: {}", idempotencyKey, e.getMessage(), e));
     }
 
     private Mono<Void> returnCachedResponse(ServerWebExchange exchange, CachedResponse cachedResponse) {
-        System.out.println("[DEBUG_LOG] IdempotencyWebFilter.returnCachedResponse: Returning cached response with status: " + 
-                          cachedResponse.getStatus() + 
-                          ", contentType: " + cachedResponse.getContentType() + 
-                          ", bodyLength: " + (cachedResponse.getBody() != null ? cachedResponse.getBody().length : 0));
+        log.debug("IdempotencyWebFilter.returnCachedResponse: Returning cached response with status: {}, contentType: {}, bodyLength: {}", 
+                 cachedResponse.getStatus(), 
+                 cachedResponse.getContentType(), 
+                 (cachedResponse.getBody() != null ? cachedResponse.getBody().length : 0));
 
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.valueOf(cachedResponse.getStatus()));
@@ -172,8 +172,8 @@ public class IdempotencyWebFilter implements WebFilter {
 
         DataBuffer buffer = response.bufferFactory().wrap(cachedResponse.getBody());
         return response.writeWith(Mono.just(buffer))
-                .doOnSuccess(v -> System.out.println("[DEBUG_LOG] IdempotencyWebFilter.returnCachedResponse: Successfully returned cached response"))
-                .doOnError(e -> System.err.println("[DEBUG_LOG] IdempotencyWebFilter.returnCachedResponse: Error returning cached response: " + e.getMessage()));
+                .doOnSuccess(v -> log.debug("IdempotencyWebFilter.returnCachedResponse: Successfully returned cached response"))
+                .doOnError(e -> log.error("IdempotencyWebFilter.returnCachedResponse: Error returning cached response: {}", e.getMessage(), e));
     }
 
     private Mono<Void> sendBadRequest(ServerWebExchange exchange, String message) {
