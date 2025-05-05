@@ -609,6 +609,25 @@ throw validationBuilder.build();
 </tr>
 </table>
 
+#### Automatic Suggestions and Metadata
+
+The library automatically adds helpful suggestions and relevant metadata to all exceptions through two aspects:
+
+1. **ExceptionMetadataAspect**: Automatically adds metadata to exceptions, such as:
+   - Exception type
+   - Exception ID (for tracking)
+   - Source information (class, method, line)
+   - Cause information
+   - Exception-specific metadata based on the type of exception
+
+2. **ExceptionSuggestionAspect**: Automatically adds user-friendly suggestions to exceptions based on:
+   - HTTP status code
+   - Exception category
+   - Error code
+   - Available metadata
+
+These aspects ensure that all error responses include helpful information for both users and developers without requiring manual addition of suggestions or metadata.
+
 #### Error Response Format
 
 All exceptions are converted to a standardized JSON response format:
