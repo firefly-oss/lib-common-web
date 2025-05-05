@@ -1,2 +1,5 @@
 com.catalis.common.web.openapi.OpenAPIConfiguration
 com.catalis.common.web.configuration.ExceptionHandlerConfiguration
+com.catalis.common.web.idempotency.config.InMemoryIdempotencyConfig
+com.catalis.common.web.idempotency.config.RedisIdempotencyConfig
+com.catalis.common.web.idempotency.filter.IdempotencyWebFilter
