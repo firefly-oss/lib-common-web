@@ -82,14 +82,12 @@
         <dependency>
             <groupId>jakarta.persistence</groupId>
             <artifactId>jakarta.persistence-api</artifactId>
-            <optional>true</optional>
         </dependency>
 
         <!-- R2DBC (for exception classes) -->
         <dependency>
             <groupId>io.r2dbc</groupId>
             <artifactId>r2dbc-spi</artifactId>
-            <optional>true</optional>
         </dependency>
 
         <!-- AspectJ for AOP -->
