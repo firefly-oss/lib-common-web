@@ -150,23 +150,4 @@ public class OpenAPIConfiguration {
         }
     }
 
-    /**
-     * Adds security schemes to the OpenAPI documentation.
-     *
-     * @param openAPI the OpenAPI instance to configure
-     */
-    private void addSecurity(OpenAPI openAPI) {
-        // Define the security scheme
-        Components components = new Components()
-                .addSecuritySchemes("bearer-jwt", new SecurityScheme()
-                        .type(SecurityScheme.Type.HTTP)
-                        .scheme("bearer")
-                        .bearerFormat("JWT")
-                        .description("JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\""));
-
-        // Apply the security scheme globally
-        openAPI.components(components)
-                .addSecurityItem(new SecurityRequirement().addList("bearer-jwt"));
-    }
-
 }
