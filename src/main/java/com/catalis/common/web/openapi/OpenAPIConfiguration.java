@@ -1,12 +1,9 @@
 package com.catalis.common.web.openapi;
 
-import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
-import io.swagger.v3.oas.models.security.SecurityRequirement;
-import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -15,14 +12,12 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
  * Configuration class for OpenAPI documentation.
  * This class configures the OpenAPI documentation for the application,
- * including information about the API, contact details, license, servers,
- * and security schemes.
+ * including information about the API, contact details, license, servers.
  */
 @Configuration
 public class OpenAPIConfiguration {
@@ -56,9 +51,6 @@ public class OpenAPIConfiguration {
     @Value("${server.port:8080}")
     private String serverPort;
 
-    @Value("${openapi.security.enabled:false}")
-    private boolean securityEnabled;
-
     @Value("${openapi.servers.enabled:true}")
     private boolean serversEnabled;
 
@@ -75,7 +67,7 @@ public class OpenAPIConfiguration {
 
     /**
      * Creates and configures the OpenAPI documentation for the application.
-     * This method sets up the API information, servers, and security schemes
+     * This method sets up the API information, servers
      * based on the application configuration.
      *
      * @return the configured OpenAPI instance
@@ -98,11 +90,6 @@ public class OpenAPIConfiguration {
         // Add servers configuration if enabled
         if (serversEnabled) {
             addServers(openAPI);
-        }
-
-        // Add security configuration if enabled
-        if (securityEnabled) {
-            addSecurity(openAPI);
         }
 
         return openAPI;
