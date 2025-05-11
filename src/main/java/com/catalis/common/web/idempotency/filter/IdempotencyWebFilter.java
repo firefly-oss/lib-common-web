@@ -38,7 +38,7 @@ import java.util.List;
 public class IdempotencyWebFilter implements WebFilter {
 
     private static final Logger log = LoggerFactory.getLogger(IdempotencyWebFilter.class);
-    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+    private static final String IDEMPOTENCY_KEY_HEADER = "X-Idempotency-Key";
     private static final List<HttpMethod> IDEMPOTENT_METHODS = Arrays.asList(
             HttpMethod.POST, HttpMethod.PUT, HttpMethod.PATCH);
 
@@ -79,8 +79,8 @@ public class IdempotencyWebFilter implements WebFilter {
         log.debug("IdempotencyWebFilter.filter: Found Idempotency-Key: {}", idempotencyKey);
 
         if (idempotencyKey == null || idempotencyKey.trim().isEmpty()) {
-            log.debug("IdempotencyWebFilter.filter: Empty Idempotency-Key header");
-            return sendBadRequest(exchange, "Invalid Idempotency-Key header");
+            log.debug("IdempotencyWebFilter.filter: Empty X-Idempotency-Key header");
+            return sendBadRequest(exchange, "Invalid X-Idempotency-Key header");
         }
 
         // Check if idempotency is disabled for this endpoint
