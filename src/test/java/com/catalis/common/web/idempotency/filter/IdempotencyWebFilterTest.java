@@ -80,7 +80,7 @@ class IdempotencyWebFilterTest {
         String idempotencyKey = "test-key-1";
         MockServerHttpRequest request = MockServerHttpRequest
                 .post("/test")
-                .header("Idempotency-Key", idempotencyKey)
+                .header("X-Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .build();
         MockServerWebExchange exchange = MockServerWebExchange.from(request);
@@ -113,7 +113,7 @@ class IdempotencyWebFilterTest {
         // Create a request with the same idempotency key
         MockServerHttpRequest request = MockServerHttpRequest
                 .post("/test")
-                .header("Idempotency-Key", idempotencyKey)
+                .header("X-Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .build();
         MockServerWebExchange exchange = MockServerWebExchange.from(request);
@@ -137,7 +137,7 @@ class IdempotencyWebFilterTest {
         String idempotencyKey = "test-key-3";
         MockServerHttpRequest request = MockServerHttpRequest
                 .method(HttpMethod.GET, "/test")
-                .header("Idempotency-Key", idempotencyKey)
+                .header("X-Idempotency-Key", idempotencyKey)
                 .build();
         MockServerWebExchange exchange = MockServerWebExchange.from(request);
 
@@ -155,7 +155,7 @@ class IdempotencyWebFilterTest {
         // Arrange
         MockServerHttpRequest request = MockServerHttpRequest
                 .post("/test")
-                .header("Idempotency-Key", "")
+                .header("X-Idempotency-Key", "")
                 .contentType(MediaType.APPLICATION_JSON)
                 .build();
         MockServerWebExchange exchange = MockServerWebExchange.from(request);

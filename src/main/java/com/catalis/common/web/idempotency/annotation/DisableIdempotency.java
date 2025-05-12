@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 /**
  * Annotation to disable idempotency for specific endpoints.
  * When applied to a controller method, the idempotency filter will not
- * process requests to that endpoint, and the Idempotency-Key header
+ * process requests to that endpoint, and the X-Idempotency-Key header
  * will not be included in the OpenAPI documentation for that operation.
  * 
  * Example usage:

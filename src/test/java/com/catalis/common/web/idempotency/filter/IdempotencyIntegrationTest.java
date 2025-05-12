@@ -61,7 +61,7 @@ class IdempotencyIntegrationTest {
         WebTestClient.ResponseSpec firstResponse = webTestClient
                 .post()
                 .uri("/test")
-                .header("Idempotency-Key", idempotencyKey)
+                .header("X-Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(BodyInserters.fromValue(requestBody))
                 .exchange();
@@ -76,7 +76,7 @@ class IdempotencyIntegrationTest {
         WebTestClient.ResponseSpec secondResponse = webTestClient
                 .post()
                 .uri("/test")
-                .header("Idempotency-Key", idempotencyKey)
+                .header("X-Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(BodyInserters.fromValue(requestBody))
                 .exchange();
@@ -104,7 +104,7 @@ class IdempotencyIntegrationTest {
         WebTestClient.ResponseSpec firstResponse = webTestClient
                 .post()
                 .uri("/test")
-                .header("Idempotency-Key", firstIdempotencyKey)
+                .header("X-Idempotency-Key", firstIdempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(BodyInserters.fromValue(requestBody))
                 .exchange();
@@ -120,7 +120,7 @@ class IdempotencyIntegrationTest {
         WebTestClient.ResponseSpec secondResponse = webTestClient
                 .post()
                 .uri("/test")
-                .header("Idempotency-Key", secondIdempotencyKey)
+                .header("X-Idempotency-Key", secondIdempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(BodyInserters.fromValue(requestBody))
                 .exchange();
@@ -148,7 +148,7 @@ class IdempotencyIntegrationTest {
         WebTestClient.ResponseSpec firstResponse = webTestClient
                 .post()
                 .uri("/test-disabled")
-                .header("Idempotency-Key", idempotencyKey)
+                .header("X-Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(BodyInserters.fromValue(requestBody))
                 .exchange();
@@ -163,7 +163,7 @@ class IdempotencyIntegrationTest {
         WebTestClient.ResponseSpec secondResponse = webTestClient
                 .post()
                 .uri("/test-disabled")
-                .header("Idempotency-Key", idempotencyKey)
+                .header("X-Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(BodyInserters.fromValue(requestBody))
                 .exchange();

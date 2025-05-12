@@ -132,11 +132,11 @@ public class PaymentController {
     @ApiResponses({
         @ApiResponse(responseCode = "201", description = "Payment processed successfully"),
         @ApiResponse(responseCode = "400", description = "Invalid payment details"),
-        @ApiResponse(responseCode = "409", description = "Payment already processed (when same Idempotency-Key is reused)")
+        @ApiResponse(responseCode = "409", description = "Payment already processed (when same X-Idempotency-Key is reused)")
     })
     public Mono<ResponseEntity<PaymentResponse>> processPayment(
             @Valid @RequestBody PaymentRequest paymentRequest,
-            @RequestHeader(value = "Idempotency-Key", required = true) String idempotencyKey) {
+            @RequestHeader(value = "X-Idempotency-Key", required = true) String idempotencyKey) {
 
         return paymentService.processPayment(paymentRequest)
             .map(payment -> ResponseEntity
@@ -169,7 +169,7 @@ public class PaymentController {
 
 This example demonstrates:
 - OpenAPI documentation with `@Operation` and `@ApiResponse` annotations
-- Idempotency support with the required `Idempotency-Key` header
+- Idempotency support with the required `X-Idempotency-Key` header
 - Exception handling with specialized exceptions
 - Response entity customization
 - Error mapping from service-specific exceptions to standard API exceptions
@@ -294,7 +294,7 @@ Here are some common use cases and examples of how to use the library in real-wo
 
 The library automatically adds idempotency support to all POST, PUT, and PATCH endpoints. This means:
 
-1. The `Idempotency-Key` header is automatically added to the OpenAPI documentation for these endpoints
+1. The `X-Idempotency-Key` header is automatically added to the OpenAPI documentation for these endpoints
 2. Requests with the same idempotency key will only be processed once
 3. Subsequent requests with the same key will receive the cached response
 
@@ -311,7 +311,7 @@ public class ResourceController {
     }
 
     // This endpoint has automatic idempotency support
-    // Clients should include an Idempotency-Key header
+    // Clients should include an X-Idempotency-Key header
     @PostMapping
     public Mono<ResponseEntity<ResourceResponse>> createResource(
             @Valid @RequestBody ResourceRequest request) {
@@ -795,11 +795,11 @@ The library provides automatic idempotency handling for HTTP POST, PUT, and PATC
 
 #### How It Works
 
-1. Client includes an `Idempotency-Key` header with a unique value (e.g., UUID) in their request
+1. Client includes an `X-Idempotency-Key` header with a unique value (e.g., UUID) in their request
 2. If this is the first request with this key, it's processed normally and the response is cached
 3. If the same key is used again, the cached response is returned without processing the request again
 4. Keys automatically expire after a configurable time period
-5. The `Idempotency-Key` header is automatically added to the OpenAPI documentation for all POST, PUT, and PATCH endpoints
+5. The `X-Idempotency-Key` header is automatically added to the OpenAPI documentation for all POST, PUT, and PATCH endpoints
 
 #### Disabling Idempotency for Specific Endpoints
 

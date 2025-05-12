@@ -13,13 +13,13 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * OpenAPI customizer that adds the Idempotency-Key header to POST, PUT, and PATCH operations.
+ * OpenAPI customizer that adds the X-Idempotency-Key header to POST, PUT, and PATCH operations.
  * It excludes operations that have the {@link DisableIdempotency} annotation.
  */
 @Component
 public class IdempotencyOpenAPICustomizer implements OpenApiCustomizer {
 
-    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+    private static final String IDEMPOTENCY_KEY_HEADER = "X-Idempotency-Key";
     private static final List<PathItem.HttpMethod> IDEMPOTENT_METHODS = Arrays.asList(
             PathItem.HttpMethod.POST, PathItem.HttpMethod.PUT, PathItem.HttpMethod.PATCH);
 
@@ -47,7 +47,7 @@ public class IdempotencyOpenAPICustomizer implements OpenApiCustomizer {
             return;
         }
 
-        // Check if the Idempotency-Key parameter already exists
+        // Check if the X-Idempotency-Key parameter already exists
         Optional<Parameter> existingParam = operation.getParameters() != null ?
                 operation.getParameters().stream()
                         .filter(p -> IDEMPOTENCY_KEY_HEADER.equals(p.getName()) && "header".equals(p.getIn()))
