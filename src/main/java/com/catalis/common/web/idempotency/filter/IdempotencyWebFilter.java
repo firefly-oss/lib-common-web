@@ -164,7 +164,16 @@ public class IdempotencyWebFilter implements WebFilter {
 
         return chain.filter(exchange.mutate().response(decoratedResponse).build())
                 .doOnSuccess(v -> log.debug("IdempotencyWebFilter.processThroughFilterChain: Successfully processed request through filter chain for key: {}", idempotencyKey))
-                .doOnError(e -> log.error("IdempotencyWebFilter.processThroughFilterChain: Error processing request through filter chain for key: {}: {}", idempotencyKey, e.getMessage(), e));
+                .onErrorResume(e -> {
+                    // Handle JSON parsing errors and other exceptions gracefully
+                    if (isJsonParsingError(e)) {
+                        log.error("IdempotencyWebFilter.processThroughFilterChain: JSON parsing error for key: {}, returning BAD_REQUEST", idempotencyKey);
+                        return sendBadRequest(exchange, "Invalid JSON format in request body");
+                    }
+                    // For other errors, log and propagate them as is
+                    log.error("IdempotencyWebFilter.processThroughFilterChain: Error processing request through filter chain for key: {}: {}", idempotencyKey, e.getMessage(), e);
+                    return Mono.error(e);
+                });
     }
 
     private Mono<Void> returnCachedResponse(ServerWebExchange exchange, CachedResponse cachedResponse) {
@@ -194,6 +203,44 @@ public class IdempotencyWebFilter implements WebFilter {
         byte[] bytes = message.getBytes();
         DataBuffer buffer = response.bufferFactory().wrap(bytes);
         return response.writeWith(Mono.just(buffer));
+    }
+
+    /**
+     * Checks if the given exception is related to JSON parsing errors.
+     * 
+     * @param throwable the exception to check
+     * @return true if the exception is a JSON parsing error, false otherwise
+     */
+    private boolean isJsonParsingError(Throwable throwable) {
+        if (throwable == null) {
+            return false;
+        }
+        
+        // Check for JSON parsing exceptions
+        String exceptionName = throwable.getClass().getSimpleName();
+        String message = throwable.getMessage();
+        
+        // Check for Jackson JSON parsing exceptions
+        if (exceptionName.contains("JsonParseException") || 
+            exceptionName.contains("JsonProcessingException") ||
+            exceptionName.contains("JsonMappingException")) {
+            return true;
+        }
+        
+        // Check for Spring's DecodingException wrapping JSON errors
+        if (exceptionName.contains("DecodingException") && 
+            message != null && message.contains("JSON decoding error")) {
+            return true;
+        }
+        
+        // Check for ServerWebInputException with JSON-related messages
+        if (exceptionName.contains("ServerWebInputException") && 
+            message != null && message.contains("Failed to read HTTP message")) {
+            return true;
+        }
+        
+        // Recursively check the cause
+        return isJsonParsingError(throwable.getCause());
     }
 
     /**
