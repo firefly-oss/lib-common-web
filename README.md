@@ -230,6 +230,75 @@ This example demonstrates:
 
 </details>
 
+### 📊 HTTP Request Logging
+
+<details>
+<summary><b>Click to expand</b></summary>
+
+- **Comprehensive request/response logging** for auditing purposes with **guaranteed valid JSON format**
+- **Robust JSON serialization** using Jackson ObjectMapper with comprehensive validation and fallback mechanisms
+- **Advanced content sanitization** for handling special characters, control characters, and invalid UTF-8 sequences
+- **Safe handling of binary content** with automatic base64 encoding fallback
+- **Configurable logging levels** (DEBUG, INFO, WARN, ERROR)
+- **Sensitive data protection** with automatic header masking
+- **Path-based exclusions** for health checks and actuator endpoints
+- **Configurable body logging** with size limits for request and response content
+- **Performance tracking** with request duration measurements
+- **Request correlation** with unique request IDs for tracing
+- **Structured logging** with consistent JSON schema for easy integration with log aggregation tools
+- **Error-resilient logging** with fallback JSON generation to ensure logging never fails
+
+#### JSON Log Structure
+
+All HTTP logs are formatted as valid JSON with the following structure:
+
+**HTTP Request Log:**
+```json
+{
+  "type": "HTTP_REQUEST",
+  "requestId": "123456789",
+  "timestamp": "2025-01-20T10:30:45.123Z",
+  "method": "POST",
+  "path": "/api/users",
+  "queryParams": {
+    "limit": "10",
+    "offset": "0"
+  },
+  "headers": {
+    "Content-Type": "application/json",
+    "Authorization": "***MASKED***",
+    "User-Agent": "MyApp/1.0"
+  }
+}
+```
+
+**HTTP Response Log:**
+```json
+{
+  "type": "HTTP_RESPONSE",
+  "requestId": "123456789", 
+  "timestamp": "2025-01-20T10:30:45.456Z",
+  "statusCode": 201,
+  "durationMs": 333,
+  "headers": {
+    "Content-Type": "application/json",
+    "Location": "/api/users/456"
+  }
+}
+```
+
+**HTTP Request/Response Body Logs:**
+```json
+{
+  "type": "HTTP_REQUEST_BODY",
+  "requestId": "123456789",
+  "timestamp": "2025-01-20T10:30:45.200Z",
+  "body": "{\"name\":\"John Doe\",\"email\":\"john@example.com\"}"
+}
+```
+
+</details>
+
 ### ⚙️ Spring Boot Auto-configuration
 
 <details>

@@ -3,3 +3,4 @@ com.catalis.common.web.configuration.ExceptionHandlerConfiguration
 com.catalis.common.web.idempotency.config.InMemoryIdempotencyConfig
 com.catalis.common.web.idempotency.config.RedisIdempotencyConfig
 com.catalis.common.web.idempotency.filter.IdempotencyWebFilter
+com.catalis.common.web.logging.filter.HttpRequestLoggingWebFilter

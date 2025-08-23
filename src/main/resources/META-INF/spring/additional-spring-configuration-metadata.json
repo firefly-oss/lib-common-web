@@ -49,6 +49,48 @@
       "name": "openapi.servers.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether to enable server definitions in OpenAPI documentation."
+    },
+    {
+      "name": "http-request-logging.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether HTTP request logging is enabled for auditing purposes.",
+      "defaultValue": true
+    },
+    {
+      "name": "http-request-logging.include-headers",
+      "type": "java.lang.Boolean",
+      "description": "Whether to include request and response headers in logs.",
+      "defaultValue": true
+    },
+    {
+      "name": "http-request-logging.include-request-body",
+      "type": "java.lang.Boolean",
+      "description": "Whether to include request body in logs.",
+      "defaultValue": false
+    },
+    {
+      "name": "http-request-logging.include-response-body",
+      "type": "java.lang.Boolean",
+      "description": "Whether to include response body in logs.",
+      "defaultValue": false
+    },
+    {
+      "name": "http-request-logging.max-body-size",
+      "type": "java.lang.Integer",
+      "description": "Maximum size of request/response body to log in bytes.",
+      "defaultValue": 1024
+    },
+    {
+      "name": "http-request-logging.log-level",
+      "type": "java.lang.String",
+      "description": "Log level for HTTP request logging (DEBUG, INFO, WARN, ERROR).",
+      "defaultValue": "INFO"
+    },
+    {
+      "name": "http-request-logging.include-query-params",
+      "type": "java.lang.Boolean",
+      "description": "Whether to include query parameters in logs.",
+      "defaultValue": true
     }
   ],
   "hints": []
