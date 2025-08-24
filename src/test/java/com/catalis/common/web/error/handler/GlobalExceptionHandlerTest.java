@@ -5,6 +5,7 @@ import com.catalis.common.web.error.exceptions.BusinessException;
 import com.catalis.common.web.error.exceptions.ResourceNotFoundException;
 import com.catalis.common.web.error.exceptions.ValidationException;
 import com.catalis.common.web.error.models.ErrorResponse;
+import com.catalis.common.web.logging.service.PiiMaskingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import reactor.test.StepVerifier;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -43,7 +45,7 @@ class GlobalExceptionHandlerTest {
             return new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR, "UNEXPECTED_ERROR", "Unexpected error: " + ex.getMessage());
         });
 
-        exceptionHandler = new GlobalExceptionHandler(converterService);
+        exceptionHandler = new GlobalExceptionHandler(converterService, Optional.empty());
         objectMapper = new ObjectMapper().findAndRegisterModules();
 
         // Configure ObjectMapper to handle the date format used in ErrorResponse

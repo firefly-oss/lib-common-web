@@ -4,6 +4,7 @@ import com.catalis.common.web.error.converter.ExceptionConverterService;
 import com.catalis.common.web.error.exceptions.BusinessException;
 import com.catalis.common.web.error.exceptions.ValidationException;
 import com.catalis.common.web.error.models.ErrorResponse;
+import com.catalis.common.web.logging.service.PiiMaskingService;
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.web.reactive.error.ErrorWebExceptionHandler;
@@ -23,6 +24,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -44,14 +46,18 @@ import reactor.core.publisher.Mono;
 public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
 
     private final ExceptionConverterService converterService;
+    private final Optional<PiiMaskingService> piiMaskingService;
 
     /**
-     * Creates a new GlobalExceptionHandler with the given converter service.
+     * Creates a new GlobalExceptionHandler with the given converter service and optional PII masking service.
      *
      * @param converterService the service used to convert exceptions to business exceptions
+     * @param piiMaskingService optional service used to mask PII data in error messages
      */
-    public GlobalExceptionHandler(ExceptionConverterService converterService) {
+    public GlobalExceptionHandler(ExceptionConverterService converterService, 
+                                Optional<PiiMaskingService> piiMaskingService) {
         this.converterService = converterService;
+        this.piiMaskingService = piiMaskingService;
     }
 
     @Override
@@ -90,7 +96,8 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     private Mono<Void> handleBusinessException(ServerWebExchange exchange, BusinessException ex) {
-        log.error("Business exception occurred: ", ex);
+        String maskedMessage = maskExceptionMessage("Business exception occurred: " + ex.getMessage());
+        log.error(maskedMessage, ex);
 
         // Create a more detailed error response with additional context
         var builder = ErrorResponse.builder()
@@ -349,8 +356,22 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
                     .findAndRegisterModules()
                     .writeValueAsString(errorResponse);
         } catch (Exception e) {
-            log.error("Error converting ErrorResponse to JSON", e);
+            String maskedMessage = maskExceptionMessage("Error converting ErrorResponse to JSON: " + e.getMessage());
+            log.error(maskedMessage, e);
             return "{\"message\":\"Error processing response\"}";
         }
+    }
+
+    /**
+     * Masks PII data in exception messages using the PII masking service if available.
+     * 
+     * @param message the exception message to mask
+     * @return the masked message, or original message if PII masking is not available
+     */
+    private String maskExceptionMessage(String message) {
+        if (piiMaskingService.isPresent() && message != null) {
+            return piiMaskingService.get().maskExceptionMessage(message);
+        }
+        return message;
     }
 }

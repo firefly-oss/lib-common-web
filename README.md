@@ -13,6 +13,7 @@ A production-ready Spring Boot starter library for reactive web applications, pr
   - [Request Idempotency](#request-idempotency)
   - [OpenAPI Integration](#openapi-integration)
   - [HTTP Request Logging](#http-request-logging)
+  - [PII Data Masking](#pii-data-masking)
 - [Configuration](#configuration)
 - [Usage Examples](#usage-examples)
 - [Testing](#testing)
@@ -58,6 +59,14 @@ The Firefly Common Web Library is a comprehensive Spring Boot starter designed f
 - **Configurable filtering** and content size limits
 - **Sensitive data protection** with automatic masking
 - **Performance metrics** with request duration tracking
+
+### 🔒 PII Data Masking
+- **Automatic PII detection** using configurable regex patterns
+- **39+ built-in patterns** covering emails, phone numbers (US + 26 European countries), SSNs, credit cards, IP/MAC addresses, JWT tokens, API keys, and national identity cards (15+ European countries)
+- **Custom pattern support** for organization-specific sensitive data
+- **Multiple masking strategies** (preserve length, partial reveal, custom mask characters)
+- **Automatic logging protection** - automatically masks PII in ALL application logs and stdout
+- **Integration with logging** to protect sensitive data in logs and exception messages
 
 ## Installation
 
@@ -230,19 +239,217 @@ idempotency:
 - Default option for single-instance deployments
 - Configurable maximum size and TTL
 - High performance with automatic eviction
+- **No additional dependencies required** (included by default)
+
+**Dependencies:**
+```xml
+<!-- Already included in lib-common-web -->
+<dependency>
+    <groupId>com.github.ben-manes.caffeine</groupId>
+    <artifactId>caffeine</artifactId>
+</dependency>
+```
 
 ##### Redis Cache
 - For distributed deployments
 - Shared across multiple application instances
 - Requires Redis connection configuration
+- **No additional dependencies required** (included by default)
 
+**Dependencies:**
+```xml
+<!-- Already included in lib-common-web -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis-reactive</artifactId>
+</dependency>
+```
+
+##### Hazelcast Cache
+- For distributed deployments with clustering support
+- Shared across multiple application instances
+- Provides high availability and fault tolerance
+- **Requires additional dependencies**
+
+**Dependencies:**
+
+*Maven:*
+```xml
+<dependency>
+    <groupId>com.hazelcast</groupId>
+    <artifactId>hazelcast-spring</artifactId>
+    <version>5.3.6</version>
+</dependency>
+<dependency>
+    <groupId>com.hazelcast</groupId>
+    <artifactId>hazelcast</artifactId>
+    <version>5.3.6</version>
+</dependency>
+```
+
+*Gradle:*
+```gradle
+implementation 'com.hazelcast:hazelcast-spring:5.3.6'
+implementation 'com.hazelcast:hazelcast:5.3.6'
+```
+
+##### EhCache
+- For local deployments with disk persistence
+- Single-instance deployments that require cache persistence across restarts
+- Better performance than distributed caches for local scenarios
+- **Requires additional dependencies**
+
+**Dependencies:**
+
+*Maven:*
+```xml
+<dependency>
+    <groupId>org.ehcache</groupId>
+    <artifactId>ehcache</artifactId>
+    <version>3.10.8</version>
+</dependency>
+<dependency>
+    <groupId>javax.cache</groupId>
+    <artifactId>cache-api</artifactId>
+    <version>1.1.1</version>
+</dependency>
+```
+
+*Gradle:*
+```gradle
+implementation 'org.ehcache:ehcache:3.10.8'
+implementation 'javax.cache:cache-api:1.1.1'
+```
+
+**Configuration:**
 ```yaml
 spring:
   data:
     redis:
       host: localhost
       port: 6379
+      password: # Optional
+      timeout: 2000ms
+      database: 0
       # Additional Redis configuration
+```
+
+##### Hazelcast Configuration
+
+**Configuration:**
+```yaml
+idempotency:
+  cache:
+    hazelcast:
+      enabled: true  # Enable Hazelcast cache
+      map-name: idempotencyCache  # Hazelcast IMap name (optional, default: idempotencyCache)
+```
+
+**Implementation Example:**
+
+You need to provide Hazelcast function beans in your application configuration:
+
+```java
+@Configuration
+public class HazelcastIdempotencyConfiguration {
+
+    @Autowired
+    private HazelcastInstance hazelcastInstance;
+    
+    @Autowired
+    private IdempotencyProperties properties;
+
+    @Bean
+    public Function<String, Mono<CachedResponse>> hazelcastIdempotencyGetFunction() {
+        return key -> {
+            String mapName = properties.getCache().getHazelcast().getMapName();
+            IMap<String, CachedResponse> map = hazelcastInstance.getMap(mapName);
+            return Mono.fromSupplier(() -> map.get(key))
+                    .filter(Objects::nonNull);
+        };
+    }
+
+    @Bean
+    public BiFunction<String, CachedResponse, Mono<Boolean>> hazelcastIdempotencySetFunction() {
+        return (key, response) -> {
+            String mapName = properties.getCache().getHazelcast().getMapName();
+            IMap<String, CachedResponse> map = hazelcastInstance.getMap(mapName);
+            Duration ttl = Duration.ofHours(properties.getCache().getTtlHours());
+            return Mono.fromSupplier(() -> {
+                map.put(key, response, ttl.toMillis(), TimeUnit.MILLISECONDS);
+                return true;
+            });
+        };
+    }
+}
+```
+
+##### EhCache Configuration
+
+**Configuration:**
+```yaml
+idempotency:
+  cache:
+    ehcache:
+      enabled: true  # Enable EhCache
+      cache-name: idempotencyCache  # EhCache cache name (optional, default: idempotencyCache)
+      disk-persistent: true  # Enable disk persistence (optional, default: true)
+```
+
+**Implementation Example:**
+
+You need to provide EhCache function beans in your application configuration:
+
+```java
+@Configuration
+public class EhCacheIdempotencyConfiguration {
+
+    @Autowired
+    private IdempotencyProperties properties;
+
+    @Bean
+    public CacheManager ehCacheManager() {
+        CachingProvider provider = Caching.getCachingProvider("org.ehcache.jsr107.EhcacheCachingProvider");
+        CacheManager cacheManager = provider.getCacheManager();
+        
+        // Configure cache programmatically
+        Configuration<String, CachedResponse> config = Eh107Configuration.fromEhcacheCacheConfiguration(
+            CacheConfigurationBuilder.newCacheConfigurationBuilder(
+                String.class, 
+                CachedResponse.class,
+                ResourcePoolsBuilder.heap(properties.getCache().getMaxEntries())
+                    .disk(1, MemoryUnit.GB, properties.getCache().getEhcache().isDiskPersistent())
+            )
+            .withExpiry(ExpiryPolicyBuilder.timeToLiveExpiration(
+                Duration.ofHours(properties.getCache().getTtlHours())
+            ))
+            .build()
+        );
+        
+        String cacheName = properties.getCache().getEhcache().getCacheName();
+        cacheManager.createCache(cacheName, config);
+        return cacheManager;
+    }
+
+    @Bean
+    public Function<String, Mono<CachedResponse>> ehcacheIdempotencyGetFunction(CacheManager cacheManager) {
+        return key -> {
+            String cacheName = properties.getCache().getEhcache().getCacheName();
+            Cache<String, CachedResponse> cache = cacheManager.getCache(cacheName, String.class, CachedResponse.class);
+            return Mono.fromSupplier(() -> cache.get(key))
+                    .filter(Objects::nonNull);
+        };
+    }
+
+    @Bean
+    public BiFunction<String, CachedResponse, Mono<Void>> ehcacheIdempotencyPutFunction(CacheManager cacheManager) {
+        return (key, response) -> {
+            String cacheName = properties.getCache().getEhcache().getCacheName();
+            Cache<String, CachedResponse> cache = cacheManager.getCache(cacheName, String.class, CachedResponse.class);
+            return Mono.fromRunnable(() -> cache.put(key, response));
+        };
+    }
+}
 ```
 
 #### Disabling Idempotency
@@ -290,7 +497,7 @@ Structured logging for HTTP requests and responses with correlation support.
 #### Features
 - Automatic request/response correlation with trace IDs
 - Configurable content size limits
-- Sensitive data masking
+- **Comprehensive PII data masking** (see [PII Data Masking](#pii-data-masking) section below)
 - JSON structured logging format
 - Performance metrics tracking
 
@@ -303,6 +510,254 @@ logging:
     com.catalis.common.web.logging: DEBUG  # Enable HTTP request logging
     org.springframework.web.reactive: DEBUG  # Enable WebFlux logging
     reactor.netty.http.server: DEBUG  # Enable Netty HTTP server logging
+```
+
+### PII Data Masking
+
+Advanced PII (Personally Identifiable Information) masking system that automatically detects and masks sensitive data in logs, exception messages, request/response bodies, headers, and query parameters.
+
+#### Features
+- **Automatic PII detection** using configurable regex patterns
+- **Automatic logging protection** - automatically intercepts and masks PII in ALL application logs and stdout
+- **Built-in patterns** for common PII types: emails, phone numbers, SSNs, credit cards, IP addresses, JWT tokens, API keys
+- **European identity cards support**: DNI, NIE (Spain), and other national identity formats
+- **Custom pattern support** for organization-specific sensitive data  
+- **Multiple masking strategies**: preserve length, partial reveal, custom mask characters
+- **Comprehensive integration**: logs, exception messages, request/response bodies, headers, query parameters
+- **Performance optimized**: pre-compiled regex patterns with thread-safe caching
+- **Graceful error handling**: continues operation even with invalid patterns
+- **Zero-configuration setup**: works automatically when the library is included
+
+#### Built-in PII Patterns
+
+The library includes **39+ pre-built patterns** covering a comprehensive range of sensitive data types:
+
+##### Core Patterns
+| Pattern Name | Pattern Type | Example | Masked Result |
+|--------------|--------------|---------|---------------|
+| `email` | Email addresses | `user@example.com` | `*****************` |
+| `phone-us` | US Phone numbers | `555-123-4567` | `*************` |
+| `ssn` | US Social Security | `123-45-6789` | `***********` |
+| `credit-card` | Credit card numbers | `4532-1234-5678-9012` | `*******************` |
+| `ip-address` | IP addresses | `192.168.1.1` | `************` |
+| `mac-address` | MAC addresses | `00:1B:44:11:3A:B7` | `*****************` |
+| `jwt` | JWT tokens | `eyJhbGci...` | `*********` |
+| `api-key` | API keys | `api_key=abc123...` | `api_key=******` |
+| `sensitive-url` | URLs with secrets | `https://api.com?token=abc` | `*********************` |
+
+##### European Phone Numbers (26+ Countries)
+| Pattern Name | Country | Mobile Format | Landline Format |
+|--------------|---------|---------------|-----------------|
+| `phone-spain` | Spain | `+34 6XX XXX XXX` | `+34 9XX XXX XXX` |
+| `phone-france` | France | `+33 6XX XX XX XX` | `+33 [1-5]XX XX XX XX` |
+| `phone-germany` | Germany | `+49 1XX XXX XXXX` | `+49 XXX XXXXXXX` |
+| `phone-italy` | Italy | `+39 3XX XXX XXXX` | `+39 0X XXX XXXX` |
+| `phone-uk` | United Kingdom | `+44 7XXX XXXXXX` | `+44 1XXX XXXXXX` |
+| `phone-netherlands` | Netherlands | `+31 6 XXXX XXXX` | `+31 XX XXX XXXX` |
+| `phone-belgium` | Belgium | `+32 4XX XX XX XX` | `+32 X XXX XX XX` |
+| `phone-portugal` | Portugal | `+351 9X XXX XXXX` | `+351 2XX XXX XXX` |
+| `phone-austria` | Austria | `+43 6XX XXX XXX` | `+43 1 XXX XXXX` |
+| `phone-switzerland` | Switzerland | `+41 7X XXX XX XX` | `+41 XX XXX XX XX` |
+| `phone-sweden` | Sweden | `+46 70 XXX XX XX` | `+46 8 XXX XX XX` |
+| `phone-norway` | Norway | `+47 4XX XX XXX` | `+47 XX XX XX XX` |
+| `phone-denmark` | Denmark | `+45 XX XX XX XX` | `+45 XX XX XX XX` |
+| `phone-finland` | Finland | `+358 4X XXX XXXX` | `+358 X XXX XXXX` |
+| `phone-poland` | Poland | `+48 5XX XXX XXX` | `+48 XX XXX XX XX` |
+| `phone-czech` | Czech Republic | `+420 6XX XXX XXX` | `+420 XXX XXX XXX` |
+| `phone-hungary` | Hungary | `+36 30 XXX XXXX` | `+36 1 XXX XXXX` |
+| `phone-ireland` | Ireland | `+353 8X XXX XXXX` | `+353 X XXX XXXX` |
+| `phone-romania` | Romania | `+40 7XX XXX XXX` | `+40 XXX XXX XXX` |
+| `phone-bulgaria` | Bulgaria | `+359 8X XXX XXXX` | `+359 X XXX XXXX` |
+| `phone-croatia` | Croatia | `+385 9X XXX XXXX` | `+385 X XXX XXXX` |
+| `phone-slovenia` | Slovenia | `+386 XX XXX XXX` | `+386 X XXX XX XX` |
+| `phone-slovakia` | Slovakia | `+421 9XX XXX XXX` | `+421 XX XXX XXXX` |
+| `phone-greece` | Greece | `+30 69X XXX XXXX` | `+30 21X XXX XXXX` |
+| `phone-lithuania` | Lithuania | `+370 6XX XX XXX` | `+370 X XXX XXXX` |
+| `phone-latvia` | Latvia | `+371 2X XXX XXX` | `+371 6XXX XXXX` |
+| `phone-estonia` | Estonia | `+372 5XXX XXXX` | `+372 XXX XXXX` |
+| `phone-luxembourg` | Luxembourg | `+352 6XX XXX XXX` | `+352 XX XX XX` |
+| `phone-malta` | Malta | `+356 7XXX XXXX` | `+356 21XX XXXX` |
+| `phone-cyprus` | Cyprus | `+357 9X XXX XXX` | `+357 2X XXX XXX` |
+| `phone-iceland` | Iceland | `+354 XXX XXXX` | `+354 XXX XXXX` |
+| `phone-european` | Generic European | Covers most EU formats with country codes |
+
+##### European National Identity Cards (15+ Countries)
+| Pattern Name | Country | Format | Example |
+|--------------|---------|--------|---------|
+| `spanish-dni` | Spain | 8 digits + letter | `12345678Z` |
+| `spanish-nie` | Spain | Letter + 7 digits + letter | `X1234567L` |
+| `french-cni` | France | 2 digits + 2 letters + 5 digits | `12AB34567` |
+| `german-id` | Germany | 10 digits or letter + 8 digits | `1234567890` |
+| `italian-cf` | Italy | 16 characters | `RSSMRA85M01H501Z` |
+| `portuguese-cc` | Portugal | 8 digits + space + digit + space + 2 letters + digit | `12345678 9 AB0` |
+| `dutch-bsn` | Netherlands | 9 digits | `123456789` |
+| `belgian-nrn` | Belgium | YY.MM.DD-XXX.XX format | `85.07.30-097.23` |
+| `austrian-svn` | Austria | DDMMYY/XXXX format | `300785/1234` |
+| `swiss-ahv` | Switzerland | 756.XXXX.XXXX.XX format | `756.1234.5678.97` |
+| `swedish-pn` | Sweden | YYMMDD-XXXX or YYYYMMDD-XXXX | `850730-1234` |
+| `norwegian-fn` | Norway | DDMMYY-XXXXX | `300785-12345` |
+| `danish-cpr` | Denmark | DDMMYY-XXXX | `300785-1234` |
+| `finnish-ht` | Finland | DDMMYY±XXXX (± = century) | `300785A123X` |
+| `uk-nino` | United Kingdom | 2 letters + 6 digits + letter | `AB123456C` |
+| `irish-pps` | Ireland | 7 digits + 1-2 letters | `1234567W` |
+
+#### Configuration
+
+```yaml
+pii-masking:
+  enabled: true  # Enable/disable PII masking globally (default: true)
+  mask-character: "*"  # Character to use for masking (default: *)
+  preserve-length: true  # Preserve original length when masking (default: true)
+  show-characters: 2  # Characters to show at start/end when preserve-length=false
+  case-sensitive: false  # Case sensitivity for pattern matching (default: false)
+  
+  # Automatic logging protection
+  auto-mask-logs: true  # Automatically mask PII in ALL application logs (default: true)
+  
+  # Control what gets masked
+  mask-headers: true  # Mask headers (default: true)
+  mask-bodies: true  # Mask request/response bodies (default: true) 
+  mask-query-params: true  # Mask query parameters (default: true)
+  mask-exceptions: true  # Mask exception messages (default: true)
+  
+  # Built-in patterns (can be overridden) - showing key examples
+  patterns:
+    email: "\\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}\\b"
+    phone-us: "\\b(?:\\+?1[-\\s]?)?(?:\\(?[0-9]{3}\\)?[-\\s]?)?[0-9]{3}[-\\s]?[0-9]{4}\\b"
+    phone-spain: "\\b(?:\\+34[-\\s]?)?(?:[679][0-9]{2}[-\\s]?[0-9]{3}[-\\s]?[0-9]{3})\\b"
+    phone-germany: "\\b(?:\\+49[-\\s]?)?(?:[1-9][0-9]{1,4}[-\\s]?[0-9]{3,}[-\\s]?[0-9]{3,})\\b"
+    ssn: "\\b(?!000|666)[0-8][0-9]{2}-?(?!00)[0-9]{2}-?(?!0000)[0-9]{4}\\b"
+    credit-card: "\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|3[0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\\b"
+    spanish-dni: "\\b[0-9]{8}[A-Za-z]\\b"
+    portuguese-cc: "\\b[0-9]{8}\\s[0-9]\\s[A-Za-z]{2}[0-9]\\b"
+    dutch-bsn: "\\b[0-9]{9}\\b"
+    jwt: "\\beyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*(?:\\.[a-zA-Z0-9_-]*)?\\b"
+    api-key: "(?i)(?:api[_-]?key|token|secret)[\"'\\s]*[:=][\"'\\s]*(?!eyJ)[a-zA-Z0-9]{20,}"
+    ip-address: "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b"
+    mac-address: "\\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\\b"
+    # Note: 39+ patterns available - see full list above
+    
+  # Custom patterns for your organization-specific data
+  custom-patterns:
+    internal-id: "ID-[0-9]{6}"  # Example: mask internal IDs
+    account-number: "ACC-[0-9]{10}"  # Example: mask account numbers
+    # Add more organization-specific patterns as needed
+```
+
+#### Usage Examples
+
+The PII masking works automatically for ALL application logs once the library is included. Here are some examples:
+
+##### Automatic Logging Protection
+
+**Zero Configuration Required**: Simply include the library and all your application logs will automatically have PII data masked.
+
+```java
+@Service
+public class UserService {
+    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
+    
+    public void processUser(User user) {
+        // This log will automatically have PII data masked
+        logger.info("Processing user: {} with email: {}", user.getName(), user.getEmail());
+        
+        // This will also be automatically masked
+        logger.debug("User details: {}", user.toString());
+        
+        // Even exception messages are masked
+        try {
+            validateUser(user);
+        } catch (Exception e) {
+            logger.error("Validation failed for user {}: {}", user.getEmail(), e.getMessage());
+        }
+    }
+}
+```
+
+**Before automatic masking:**
+```
+2024-08-25 10:30:15.123 INFO [main] UserService - Processing user: John Doe with email: john.doe@example.com
+2024-08-25 10:30:15.124 DEBUG [main] UserService - User details: User{name='John Doe', email='john.doe@example.com', phone='555-123-4567'}
+2024-08-25 10:30:15.125 ERROR [main] UserService - Validation failed for user john.doe@example.com: Invalid phone format: 555-123-4567
+```
+
+**After automatic masking:**
+```
+2024-08-25 10:30:15.123 INFO [main] UserService - Processing user: John Doe with email: *********************
+2024-08-25 10:30:15.124 DEBUG [main] UserService - User details: User{name='John Doe', email='*********************', phone='*************'}
+2024-08-25 10:30:15.125 ERROR [main] UserService - Validation failed for user *********************: Invalid phone format: *************
+```
+
+**Partial reveal masking (preserve-length=false, show-characters=2):**
+```
+2024-08-25 10:30:15.123 INFO [main] UserService - Processing user: John Doe with email: jo*****************om
+2024-08-25 10:30:15.124 DEBUG [main] UserService - User details: User{name='John Doe', email='jo*****************om', phone='55***********67'}
+2024-08-25 10:30:15.125 ERROR [main] UserService - Validation failed for user jo*****************om: Invalid phone format: 55***********67
+```
+
+##### Manual Usage (Optional)
+
+You can also use the PII masking service directly in your code when needed:
+
+```java
+@Service
+public class MyService {
+    
+    private final PiiMaskingService piiMaskingService;
+    
+    public MyService(PiiMaskingService piiMaskingService) {
+        this.piiMaskingService = piiMaskingService;
+    }
+    
+    public void logSensitiveData(String data) {
+        String maskedData = piiMaskingService.maskPiiData(data);
+        log.info("Processing data: {}", maskedData);
+    }
+    
+    public Map<String, String> maskHeaders(Map<String, String> headers) {
+        return piiMaskingService.maskHeaders(headers);
+    }
+}
+```
+
+
+#### Performance Considerations
+
+- Regex patterns are compiled once at startup and cached for optimal performance
+- Thread-safe implementation suitable for high-concurrency applications
+- Minimal memory overhead with efficient string processing
+- Graceful degradation: if a pattern fails, masking continues with other patterns
+
+#### Monitoring and Health
+
+Check the PII masking service health:
+
+```java
+@RestController
+public class HealthController {
+    
+    private final PiiMaskingService piiMaskingService;
+    
+    @GetMapping("/health/pii-masking")
+    public Map<String, Object> getPiiMaskingHealth() {
+        return piiMaskingService.getMaskingStats();
+    }
+}
+```
+
+Returns statistics like:
+```json
+{
+  "enabled": true,
+  "patternsLoaded": 39,
+  "maskCharacter": "*",
+  "preserveLength": true,
+  "caseSensitive": false,
+  "maskHeaders": true,
+  "maskBodies": true,
+  "maskQueryParams": true,
+  "maskExceptions": true
+}
 ```
 
 ## Configuration
@@ -318,6 +773,13 @@ idempotency:
     max-entries: 10000  # Maximum entries in in-memory cache
     redis:
       enabled: false  # Set to true to use Redis instead of in-memory cache
+    hazelcast:
+      enabled: false  # Set to true to use Hazelcast for distributed caching
+      map-name: idempotencyCache  # Hazelcast IMap name
+    ehcache:
+      enabled: false  # Set to true to use EhCache for local caching with persistence
+      cache-name: idempotencyCache  # EhCache cache name
+      disk-persistent: true  # Enable disk persistence
 
 # Redis configuration (when using Redis cache)
 spring:
