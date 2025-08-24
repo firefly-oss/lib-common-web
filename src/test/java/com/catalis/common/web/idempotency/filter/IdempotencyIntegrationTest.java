@@ -20,7 +20,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.BodyInserters;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.Collections;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -181,6 +183,52 @@ class IdempotencyIntegrationTest {
     /**
      * Test configuration that provides a test controller for the integration tests.
      */
+    @Test
+    void shouldDeduplicateConcurrentRequestsWithSameIdempotencyKey() {
+        // Reset the counter
+        testController.resetCounter();
+
+        String requestBody = "{\"message\":\"test\"}";
+        String idempotencyKey = "integration-test-key-concurrent";
+
+        CompletableFuture<String> f1 = java.util.concurrent.CompletableFuture.supplyAsync(() ->
+                webTestClient
+                        .post()
+                        .uri("/test-slow")
+                        .header("X-Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(BodyInserters.fromValue(requestBody))
+                        .exchange()
+                        .expectStatus().isOk()
+                        .expectBody(String.class)
+                        .returnResult()
+                        .getResponseBody()
+        );
+
+        CompletableFuture<String> f2 = java.util.concurrent.CompletableFuture.supplyAsync(() ->
+                webTestClient
+                        .post()
+                        .uri("/test-slow")
+                        .header("X-Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(BodyInserters.fromValue(requestBody))
+                        .exchange()
+                        .expectStatus().isOk()
+                        .expectBody(String.class)
+                        .returnResult()
+                        .getResponseBody()
+        );
+
+        String body1 = f1.join();
+        String body2 = f2.join();
+
+        assert body1 != null && body2 != null : "Responses should not be null";
+        assert body1.equals(body2) : "Responses should be identical";
+        assert body1.contains("\"message\":\"Processed request #1\"") : "Response should be from first processed request";
+
+        assert testController.getCounter() == 1 : "Controller method should be called exactly once";
+    }
+
     @Configuration
     static class TestConfig {
 
@@ -209,6 +257,15 @@ class IdempotencyIntegrationTest {
         public Mono<Response> handleRequestWithDisabledIdempotency(@RequestBody Request request) {
             int count = counter.incrementAndGet();
             return Mono.just(new Response("Processed request #" + count));
+        }
+
+        @PostMapping("/test-slow")
+        public Mono<Response> handleSlowRequest(@RequestBody Request request) {
+            return Mono.delay(Duration.ofMillis(300))
+                    .flatMap(t -> {
+                        int count = counter.incrementAndGet();
+                        return Mono.just(new Response("Processed request #" + count));
+                    });
         }
 
         public int getCounter() {
