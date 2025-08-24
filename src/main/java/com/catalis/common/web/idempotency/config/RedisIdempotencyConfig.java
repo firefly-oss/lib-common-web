@@ -85,7 +85,7 @@ public class RedisIdempotencyConfig {
      */
     @Bean
     public Duration idempotencyTtl() {
-        return Duration.ofHours(properties.getTtlHours());
+        return Duration.ofHours(properties.getCache().getTtlHours());
     }
 
     /**

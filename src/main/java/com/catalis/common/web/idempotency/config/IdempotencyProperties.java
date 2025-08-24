@@ -9,53 +9,85 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * Example configuration:
  * <pre>
  * idempotency:
+ *   header-name: X-Idempotency-Key
  *   cache:
- *     redis:
- *       enabled: false
  *     ttl-hours: 24
  *     max-entries: 10000
+ *     redis:
+ *       enabled: false
  * </pre>
  */
-@ConfigurationProperties(prefix = "idempotency.cache")
+@ConfigurationProperties(prefix = "idempotency")
 public class IdempotencyProperties {
 
     /**
-     * Redis configuration properties
+     * Name of the HTTP header carrying the idempotency key. Default is "X-Idempotency-Key".
      */
-    private Redis redis = new Redis();
+    private String headerName = "X-Idempotency-Key";
 
     /**
-     * Time-to-live in hours for cached responses
+     * Cache configuration properties
      */
-    private int ttlHours = 24;
+    private Cache cache = new Cache();
+
+    public String getHeaderName() {
+        return headerName;
+    }
+
+    public void setHeaderName(String headerName) {
+        this.headerName = headerName;
+    }
+
+    public Cache getCache() {
+        return cache;
+    }
+
+    public void setCache(Cache cache) {
+        this.cache = cache;
+    }
 
     /**
-     * Maximum number of entries in the in-memory cache
+     * Cache-specific configuration properties
      */
-    private int maxEntries = 10000;
+    public static class Cache {
+        /**
+         * Time-to-live in hours for cached responses
+         */
+        private int ttlHours = 24;
 
-    public Redis getRedis() {
-        return redis;
-    }
+        /**
+         * Maximum number of entries in the in-memory cache
+         */
+        private int maxEntries = 10000;
 
-    public void setRedis(Redis redis) {
-        this.redis = redis;
-    }
+        /**
+         * Redis configuration properties
+         */
+        private Redis redis = new Redis();
 
-    public int getTtlHours() {
-        return ttlHours;
-    }
+        public int getTtlHours() {
+            return ttlHours;
+        }
 
-    public void setTtlHours(int ttlHours) {
-        this.ttlHours = ttlHours;
-    }
+        public void setTtlHours(int ttlHours) {
+            this.ttlHours = ttlHours;
+        }
 
-    public int getMaxEntries() {
-        return maxEntries;
-    }
+        public int getMaxEntries() {
+            return maxEntries;
+        }
 
-    public void setMaxEntries(int maxEntries) {
-        this.maxEntries = maxEntries;
+        public void setMaxEntries(int maxEntries) {
+            this.maxEntries = maxEntries;
+        }
+
+        public Redis getRedis() {
+            return redis;
+        }
+
+        public void setRedis(Redis redis) {
+            this.redis = redis;
+        }
     }
 
     /**

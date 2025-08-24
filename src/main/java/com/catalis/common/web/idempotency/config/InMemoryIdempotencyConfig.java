@@ -5,7 +5,7 @@ import com.catalis.common.web.idempotency.cache.InMemoryIdempotencyCache;
 import com.catalis.common.web.idempotency.model.CachedResponse;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
@@ -19,12 +19,13 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Auto-configuration for in-memory idempotency cache using Caffeine.
- * This configuration is active by default or when idempotency.cache.redis.enabled=false.
+ * This configuration is the default and also serves as a fallback when a Redis-based
+ * IdempotencyCache is not available (e.g., redis enabled but no connection factory).
  */
 @Configuration
 @AutoConfiguration
 @EnableConfigurationProperties(IdempotencyProperties.class)
-@ConditionalOnProperty(name = "idempotency.cache.redis.enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnMissingBean(IdempotencyCache.class)
 public class InMemoryIdempotencyConfig {
 
     public static final String IDEMPOTENCY_CACHE_NAME = "idempotencyCache";
@@ -50,8 +51,8 @@ public class InMemoryIdempotencyConfig {
         CaffeineCacheManager cacheManager = new CaffeineCacheManager();
 
         Caffeine<Object, Object> caffeine = Caffeine.newBuilder()
-                .expireAfterWrite(properties.getTtlHours(), TimeUnit.HOURS)
-                .maximumSize(properties.getMaxEntries());
+                .expireAfterWrite(properties.getCache().getTtlHours(), TimeUnit.HOURS)
+                .maximumSize(properties.getCache().getMaxEntries());
 
         cacheManager.setCaffeine(caffeine);
         cacheManager.setCacheNames(Collections.singleton(IDEMPOTENCY_CACHE_NAME));
