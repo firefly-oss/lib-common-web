@@ -24,9 +24,12 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * WebFilter that provides idempotency for HTTP POST, PUT, and PATCH requests.
@@ -38,12 +41,13 @@ import java.util.List;
 public class IdempotencyWebFilter implements WebFilter {
 
     private static final Logger log = LoggerFactory.getLogger(IdempotencyWebFilter.class);
-    private static final String IDEMPOTENCY_KEY_HEADER = "X-Idempotency-Key";
     private static final List<HttpMethod> IDEMPOTENT_METHODS = Arrays.asList(
             HttpMethod.POST, HttpMethod.PUT, HttpMethod.PATCH);
 
     private final IdempotencyCache cache;
     private final boolean redisEnabled;
+    private final String idempotencyHeaderName;
+    private final Map<String, Sinks.One<CachedResponse>> inFlight = new ConcurrentHashMap<>();
 
     /**
      * Creates a new IdempotencyWebFilter with the specified caching mechanism.
@@ -54,7 +58,8 @@ public class IdempotencyWebFilter implements WebFilter {
     @Autowired
     public IdempotencyWebFilter(IdempotencyProperties properties, IdempotencyCache cache) {
         this.cache = cache;
-        this.redisEnabled = properties.getRedis().isEnabled();
+        this.redisEnabled = properties.getCache().getRedis().isEnabled();
+        this.idempotencyHeaderName = properties.getHeaderName();
     }
 
     @Override
@@ -77,19 +82,19 @@ public class IdempotencyWebFilter implements WebFilter {
                         return chain.filter(exchange);
                     }
 
-                    // Check for X-Idempotency-Key header
-                    List<String> idempotencyKeyHeaders = request.getHeaders().get(IDEMPOTENCY_KEY_HEADER);
+                    // Check for idempotency header
+                    List<String> idempotencyKeyHeaders = request.getHeaders().get(idempotencyHeaderName);
                     if (idempotencyKeyHeaders == null || idempotencyKeyHeaders.isEmpty()) {
-                        log.debug("IdempotencyWebFilter.filter: No X-Idempotency-Key header found");
+                        log.debug("IdempotencyWebFilter.filter: No {} header found", idempotencyHeaderName);
                         return chain.filter(exchange);
                     }
 
                     String idempotencyKey = idempotencyKeyHeaders.get(0);
-                    log.debug("IdempotencyWebFilter.filter: Found X-Idempotency-Key: {}", idempotencyKey);
+                    log.debug("IdempotencyWebFilter.filter: Found {}: {}", idempotencyHeaderName, idempotencyKey);
 
                     if (idempotencyKey == null || idempotencyKey.trim().isEmpty()) {
-                        log.debug("IdempotencyWebFilter.filter: Empty X-Idempotency-Key header");
-                        return sendBadRequest(exchange, "Invalid X-Idempotency-Key header");
+                        log.debug("IdempotencyWebFilter.filter: Empty {} header", idempotencyHeaderName);
+                        return sendBadRequest(exchange, "Invalid " + idempotencyHeaderName + " header");
                     }
 
                     // Check if idempotency is disabled for this endpoint
@@ -112,14 +117,23 @@ public class IdempotencyWebFilter implements WebFilter {
                                                         .flatMap(cachedResponse -> returnCachedResponse(exchange, cachedResponse));
                                             } else {
                                                 log.debug("IdempotencyWebFilter.filter: No cached response found for key: {}", idempotencyKey);
-                                                return processThroughFilterChain(exchange, chain, idempotencyKey);
+                                                Sinks.One<CachedResponse> newSink = Sinks.one();
+                                                Sinks.One<CachedResponse> existingSink = inFlight.putIfAbsent(idempotencyKey, newSink);
+                                                if (existingSink != null) {
+                                                    log.debug("IdempotencyWebFilter.filter: Another request in-flight for key: {}. Waiting for result.", idempotencyKey);
+                                                    return existingSink.asMono()
+                                                            .flatMap(cached -> returnCachedResponse(exchange, cached));
+                                                } else {
+                                                    log.debug("IdempotencyWebFilter.filter: This request will compute and emit result for key: {}", idempotencyKey);
+                                                    return processThroughFilterChain(exchange, chain, idempotencyKey, newSink);
+                                                }
                                             }
                                         });
                             });
                 });
     }
 
-    private Mono<Void> processThroughFilterChain(ServerWebExchange exchange, WebFilterChain chain, String idempotencyKey) {
+    private Mono<Void> processThroughFilterChain(ServerWebExchange exchange, WebFilterChain chain, String idempotencyKey, Sinks.One<CachedResponse> sink) {
         log.debug("IdempotencyWebFilter.processThroughFilterChain: Processing request through filter chain for key: {}", idempotencyKey);
         ServerHttpResponse originalResponse = exchange.getResponse();
         ServerHttpResponseDecorator decoratedResponse = new ServerHttpResponseDecorator(originalResponse) {
@@ -157,6 +171,13 @@ public class IdempotencyWebFilter implements WebFilter {
                         .doOnSuccess(v -> log.debug("IdempotencyWebFilter.writeWith: Successfully cached response for key: {}", idempotencyKey))
                         .subscribe();
 
+                    // Notify any waiting requests and clear in-flight marker
+                    try {
+                        sink.tryEmitValue(cachedResponse);
+                    } finally {
+                        inFlight.remove(idempotencyKey);
+                    }
+
                     return copiedBuffer;
                 }).flux());
             }
@@ -165,6 +186,12 @@ public class IdempotencyWebFilter implements WebFilter {
         return chain.filter(exchange.mutate().response(decoratedResponse).build())
                 .doOnSuccess(v -> log.debug("IdempotencyWebFilter.processThroughFilterChain: Successfully processed request through filter chain for key: {}", idempotencyKey))
                 .onErrorResume(e -> {
+                    // Notify waiters of the error and cleanup
+                    try {
+                        sink.tryEmitError(e);
+                    } finally {
+                        inFlight.remove(idempotencyKey);
+                    }
                     // Handle JSON parsing errors and other exceptions gracefully
                     if (isJsonParsingError(e)) {
                         log.error("IdempotencyWebFilter.processThroughFilterChain: JSON parsing error for key: {}, returning BAD_REQUEST", idempotencyKey);
@@ -173,6 +200,10 @@ public class IdempotencyWebFilter implements WebFilter {
                     // For other errors, log and propagate them as is
                     log.error("IdempotencyWebFilter.processThroughFilterChain: Error processing request through filter chain for key: {}: {}", idempotencyKey, e.getMessage(), e);
                     return Mono.error(e);
+                })
+                .doFinally(signal -> {
+                    // In case there was no body written (e.g., empty response), ensure cleanup
+                    inFlight.remove(idempotencyKey);
                 });
     }
 
