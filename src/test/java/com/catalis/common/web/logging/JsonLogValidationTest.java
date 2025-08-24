@@ -2,6 +2,7 @@ package com.catalis.common.web.logging;
 
 import com.catalis.common.web.logging.config.HttpRequestLoggingProperties;
 import com.catalis.common.web.logging.filter.HttpRequestLoggingWebFilter;
+import com.catalis.common.web.logging.service.PiiMaskingService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +18,7 @@ import reactor.test.StepVerifier;
 
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -34,7 +36,7 @@ class JsonLogValidationTest {
     void setUp() {
         properties = new HttpRequestLoggingProperties();
         properties.setEnabled(true);
-        filter = new HttpRequestLoggingWebFilter(properties);
+        filter = new HttpRequestLoggingWebFilter(properties, Optional.empty());
         objectMapper = new ObjectMapper();
     }
 

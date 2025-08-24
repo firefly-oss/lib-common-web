@@ -1,6 +1,7 @@
 package com.catalis.common.web.logging.filter;
 
 import com.catalis.common.web.logging.config.HttpRequestLoggingProperties;
+import com.catalis.common.web.logging.service.PiiMaskingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -19,6 +20,7 @@ import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.util.Optional;
 import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -36,7 +38,7 @@ class HttpRequestLoggingWebFilterTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         properties = new HttpRequestLoggingProperties();
-        filter = new HttpRequestLoggingWebFilter(properties);
+        filter = new HttpRequestLoggingWebFilter(properties, Optional.empty());
     }
 
     @Test

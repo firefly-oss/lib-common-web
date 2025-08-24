@@ -1,6 +1,7 @@
 package com.catalis.common.web.logging.filter;
 
 import com.catalis.common.web.logging.config.HttpRequestLoggingProperties;
+import com.catalis.common.web.logging.service.PiiMaskingService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -23,6 +24,8 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+
+import java.util.Optional;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.channels.Channels;
@@ -48,11 +51,14 @@ public class HttpRequestLoggingWebFilter implements WebFilter {
     private static final String MASK_VALUE = "***MASKED***";
     
     private final HttpRequestLoggingProperties properties;
+    private final Optional<PiiMaskingService> piiMaskingService;
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
     private final ObjectMapper objectMapper;
 
-    public HttpRequestLoggingWebFilter(HttpRequestLoggingProperties properties) {
+    public HttpRequestLoggingWebFilter(HttpRequestLoggingProperties properties, 
+                                     Optional<PiiMaskingService> piiMaskingService) {
         this.properties = properties;
+        this.piiMaskingService = piiMaskingService;
         this.objectMapper = createObjectMapper();
     }
 
@@ -79,7 +85,7 @@ public class HttpRequestLoggingWebFilter implements WebFilter {
 
     /**
      * Sanitizes string content to ensure it's safe for JSON serialization.
-     * Handles invalid UTF-8 sequences, control characters, and other problematic content.
+     * Handles invalid UTF-8 sequences, control characters, and PII masking.
      */
     private String sanitizeForJson(String input) {
         if (input == null) {
@@ -99,11 +105,17 @@ public class HttpRequestLoggingWebFilter implements WebFilter {
             sanitized = sanitized.substring(0, 10000) + "...[TRUNCATED]";
         }
         
+        // Apply PII masking if available
+        if (piiMaskingService.isPresent()) {
+            sanitized = piiMaskingService.get().maskPiiData(sanitized);
+        }
+        
         return sanitized;
     }
 
     /**
      * Safely extracts and sanitizes body content for JSON logging.
+     * Applies PII masking to body content.
      */
     private String sanitizeBodyForJson(byte[] body) {
         if (body == null || body.length == 0) {
@@ -113,13 +125,25 @@ public class HttpRequestLoggingWebFilter implements WebFilter {
         try {
             // Try to decode as UTF-8
             String bodyString = new String(body, StandardCharsets.UTF_8);
-            return sanitizeForJson(bodyString);
+            String sanitized = sanitizeForJson(bodyString);
+            
+            // Apply additional body-specific PII masking if available
+            if (piiMaskingService.isPresent()) {
+                sanitized = piiMaskingService.get().maskBody(sanitized);
+            }
+            
+            return sanitized;
         } catch (Exception e) {
             // If UTF-8 decoding fails, try to represent as base64 or hex
             log.debug("Failed to decode body as UTF-8, using fallback representation: {}", e.getMessage());
             try {
                 // For binary content, represent as base64
-                return java.util.Base64.getEncoder().encodeToString(body);
+                String base64Content = java.util.Base64.getEncoder().encodeToString(body);
+                // Apply PII masking to base64 content if available (though unlikely to contain readable PII)
+                if (piiMaskingService.isPresent()) {
+                    base64Content = piiMaskingService.get().maskPiiData(base64Content);
+                }
+                return base64Content;
             } catch (Exception ex) {
                 return "[BINARY_CONTENT_" + body.length + "_BYTES]";
             }
