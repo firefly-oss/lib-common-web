@@ -65,6 +65,16 @@ public class IdempotencyProperties {
          */
         private Redis redis = new Redis();
 
+        /**
+         * Hazelcast configuration properties
+         */
+        private Hazelcast hazelcast = new Hazelcast();
+
+        /**
+         * EhCache configuration properties
+         */
+        private EhCache ehcache = new EhCache();
+
         public int getTtlHours() {
             return ttlHours;
         }
@@ -88,6 +98,22 @@ public class IdempotencyProperties {
         public void setRedis(Redis redis) {
             this.redis = redis;
         }
+
+        public Hazelcast getHazelcast() {
+            return hazelcast;
+        }
+
+        public void setHazelcast(Hazelcast hazelcast) {
+            this.hazelcast = hazelcast;
+        }
+
+        public EhCache getEhcache() {
+            return ehcache;
+        }
+
+        public void setEhcache(EhCache ehcache) {
+            this.ehcache = ehcache;
+        }
     }
 
     /**
@@ -106,6 +132,83 @@ public class IdempotencyProperties {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
+        }
+    }
+
+    /**
+     * Hazelcast-specific configuration properties
+     */
+    public static class Hazelcast {
+
+        /**
+         * Whether to use Hazelcast for caching (true) or fallback to other cache (false)
+         */
+        private boolean enabled = false;
+
+        /**
+         * Name of the Hazelcast IMap to use for idempotency cache
+         */
+        private String mapName = "idempotencyCache";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getMapName() {
+            return mapName;
+        }
+
+        public void setMapName(String mapName) {
+            this.mapName = mapName;
+        }
+    }
+
+    /**
+     * EhCache-specific configuration properties
+     */
+    public static class EhCache {
+
+        /**
+         * Whether to use EhCache for caching (true) or fallback to other cache (false)
+         */
+        private boolean enabled = false;
+
+        /**
+         * Name of the EhCache cache to use for idempotency
+         */
+        private String cacheName = "idempotencyCache";
+
+        /**
+         * Whether to enable disk persistence for the EhCache
+         */
+        private boolean diskPersistent = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getCacheName() {
+            return cacheName;
+        }
+
+        public void setCacheName(String cacheName) {
+            this.cacheName = cacheName;
+        }
+
+        public boolean isDiskPersistent() {
+            return diskPersistent;
+        }
+
+        public void setDiskPersistent(boolean diskPersistent) {
+            this.diskPersistent = diskPersistent;
         }
     }
 }
