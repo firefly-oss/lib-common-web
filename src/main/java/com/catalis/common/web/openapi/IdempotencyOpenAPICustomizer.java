@@ -1,11 +1,13 @@
 package com.catalis.common.web.openapi;
 
 import com.catalis.common.web.idempotency.annotation.DisableIdempotency;
+import com.catalis.common.web.idempotency.config.IdempotencyProperties;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.parameters.Parameter;
 import org.springdoc.core.customizers.OpenApiCustomizer;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
@@ -13,15 +15,31 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * OpenAPI customizer that adds the X-Idempotency-Key header to POST, PUT, and PATCH operations.
+ * OpenAPI customizer that adds the Idempotency header to POST, PUT, and PATCH operations.
  * It excludes operations that have the {@link DisableIdempotency} annotation.
  */
 @Component
 public class IdempotencyOpenAPICustomizer implements OpenApiCustomizer {
 
-    private static final String IDEMPOTENCY_KEY_HEADER = "X-Idempotency-Key";
     private static final List<PathItem.HttpMethod> IDEMPOTENT_METHODS = Arrays.asList(
             PathItem.HttpMethod.POST, PathItem.HttpMethod.PUT, PathItem.HttpMethod.PATCH);
+
+    private final String headerName;
+
+    /**
+     * Default constructor for non-Spring usage (e.g., unit tests). Uses the default header name.
+     */
+    public IdempotencyOpenAPICustomizer() {
+        this.headerName = "X-Idempotency-Key";
+    }
+
+    /**
+     * Spring constructor that reads the header name from IdempotencyProperties.
+     */
+    @Autowired
+    public IdempotencyOpenAPICustomizer(IdempotencyProperties properties) {
+        this.headerName = properties.getHeaderName();
+    }
 
     @Override
     public void customise(OpenAPI openApi) {
@@ -47,17 +65,17 @@ public class IdempotencyOpenAPICustomizer implements OpenApiCustomizer {
             return;
         }
 
-        // Check if the X-Idempotency-Key parameter already exists
+        // Check if the idempotency header parameter already exists
         Optional<Parameter> existingParam = operation.getParameters() != null ?
                 operation.getParameters().stream()
-                        .filter(p -> IDEMPOTENCY_KEY_HEADER.equals(p.getName()) && "header".equals(p.getIn()))
+                        .filter(p -> headerName.equals(p.getName()) && "header".equals(p.getIn()))
                         .findFirst() :
                 Optional.empty();
 
         // Add the parameter if it doesn't exist
         if (existingParam.isEmpty()) {
             Parameter idempotencyKeyParam = new Parameter()
-                    .name(IDEMPOTENCY_KEY_HEADER)
+                    .name(headerName)
                     .in("header")
                     .description("Unique key for idempotent requests. If provided, ensures that identical requests with the same key will only be processed once.")
                     .required(false)
@@ -73,7 +91,7 @@ public class IdempotencyOpenAPICustomizer implements OpenApiCustomizer {
 
     private boolean hasDisableIdempotencyExtension(Operation operation) {
         // Check if the operation has the x-disable-idempotency extension
-        Object extension = operation.getExtensions() != null ? 
+        Object extension = operation.getExtensions() != null ?
                 operation.getExtensions().get(IdempotencyOperationCustomizer.DISABLE_IDEMPOTENCY_EXTENSION) : null;
         return Boolean.TRUE.equals(extension);
     }
