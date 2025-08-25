@@ -6,6 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.catalis.common.web.logging.appender.PiiMaskingAppender;
 import com.catalis.common.web.logging.service.PiiMaskingService;
+import com.catalis.common.web.logging.service.StdoutMaskingService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,7 @@ public class PiiMaskingLoggingConfigurationTest {
     private LoggerContext loggerContext;
     private Logger rootLogger;
     private ListAppender<ILoggingEvent> testAppender;
+    private StdoutMaskingService stdoutMaskingService;
 
     @BeforeEach
     void setUp() {
@@ -62,6 +64,10 @@ public class PiiMaskingLoggingConfigurationTest {
 
         // Add test appender to root logger
         rootLogger.addAppender(testAppender);
+
+        // Setup stdout masking to prevent PII disclosure in System.out.println calls
+        stdoutMaskingService = new StdoutMaskingService(piiMaskingService);
+        stdoutMaskingService.enableStdoutMasking();
     }
 
     @AfterEach
@@ -69,6 +75,11 @@ public class PiiMaskingLoggingConfigurationTest {
         // Clean up appenders
         rootLogger.detachAndStopAllAppenders();
         testAppender.stop();
+        
+        // Disable stdout masking and restore original System.out
+        if (stdoutMaskingService != null) {
+            stdoutMaskingService.disableStdoutMasking();
+        }
     }
 
     @Test
@@ -132,13 +143,22 @@ public class PiiMaskingLoggingConfigurationTest {
         ILoggingEvent logEvent = logEvents.get(0);
         String formattedMessage = logEvent.getFormattedMessage();
         
-        System.out.println("[DEBUG_LOG] Original message: " + messageWithPii);
-        System.out.println("[DEBUG_LOG] Formatted message: " + formattedMessage);
+        // Temporarily disable stdout masking to show comparison for verification
+        // This demonstrates how tests can selectively disable masking when needed
+        stdoutMaskingService.temporarilyDisableMasking();
+        System.out.println("[DEBUG_LOG] COMPARISON - Original message: " + messageWithPii);
+        System.out.println("[DEBUG_LOG] COMPARISON - Formatted message: " + formattedMessage);
         System.out.println("[DEBUG_LOG] PII masking service ready: " + piiMaskingService.isReady());
         
         // Debug: Test the service directly
         String directMasked = piiMaskingService.maskPiiData(messageWithPii);
-        System.out.println("[DEBUG_LOG] Direct service masking: " + directMasked);
+        System.out.println("[DEBUG_LOG] COMPARISON - Direct service masking: " + directMasked);
+        
+        // Re-enable stdout masking
+        stdoutMaskingService.reEnableMasking();
+        
+        // Now any PII in stdout will be masked
+        System.out.println("[DEBUG_LOG] This message with PII: " + messageWithPii + " should be masked in stdout");
 
         // The message should be different from original (masked)
         assertNotEquals(messageWithPii, formattedMessage, "Message should be masked");
@@ -173,6 +193,79 @@ public class PiiMaskingLoggingConfigurationTest {
     }
 
     @Test
+    void testStdoutMaskingWithSystemOutPrintln() {
+        // Given: Stdout masking is enabled (done in setUp)
+        assertTrue(stdoutMaskingService.isMaskingActive(), "Stdout masking should be active");
+
+        // When: Using System.out.println with PII data
+        String messageWithPii = "Customer SSN: 123-45-6789 and email: customer@example.com";
+        
+        // Test stdout masking by capturing output to a test stream first
+        java.io.ByteArrayOutputStream testOutput = new java.io.ByteArrayOutputStream();
+        java.io.PrintStream testStream = new java.io.PrintStream(testOutput);
+        java.io.PrintStream originalOut = System.out;
+        
+        try {
+            // First, redirect System.out to our capture stream
+            System.setOut(testStream);
+            
+            // Create a masking service that will capture the current System.out (our test stream)
+            StdoutMaskingService testMaskingService = new StdoutMaskingService(piiMaskingService);
+            testMaskingService.enableStdoutMasking();
+            
+            // Print message with PII - this should be masked
+            System.out.println("[DEBUG_LOG] Message with PII: " + messageWithPii);
+            System.out.flush();
+            
+            String capturedString = testOutput.toString();
+            
+            // Restore original stdout and disable test masking
+            System.setOut(originalOut);
+            testMaskingService.disableStdoutMasking();
+            
+            // Then: The output should be masked
+            System.out.println("[DEBUG_LOG] VERIFICATION - Captured output: '" + capturedString + "'");
+            System.out.println("[DEBUG_LOG] VERIFICATION - Original message: " + messageWithPii);
+            
+            // The captured output should not be empty
+            assertFalse(capturedString.trim().isEmpty(), "Captured output should not be empty");
+            
+            // Should not contain original PII
+            assertFalse(capturedString.contains("123-45-6789"), "Should not contain original SSN");
+            assertFalse(capturedString.contains("customer@example.com"), "Should not contain original email");
+            
+            // Should contain non-PII parts and the DEBUG_LOG prefix
+            assertTrue(capturedString.contains("[DEBUG_LOG]"), "Should contain DEBUG_LOG prefix");
+            assertTrue(capturedString.contains("Message with PII:"), "Should contain non-PII text");
+            
+        } finally {
+            // Ensure stdout is always restored
+            System.setOut(originalOut);
+            // Re-initialize stdout masking for other tests
+            stdoutMaskingService = new StdoutMaskingService(piiMaskingService);
+            stdoutMaskingService.enableStdoutMasking();
+        }
+    }
+
+    @Test
+    void testStdoutMaskingCanBeDisabledTemporarily() {
+        // Given: Stdout masking is enabled
+        assertTrue(stdoutMaskingService.isMaskingActive(), "Stdout masking should be active");
+
+        // When: Temporarily disabling stdout masking
+        stdoutMaskingService.temporarilyDisableMasking();
+        
+        // Then: Masking should be inactive
+        assertFalse(stdoutMaskingService.isMaskingActive(), "Stdout masking should be inactive");
+        
+        // When: Re-enabling stdout masking
+        stdoutMaskingService.reEnableMasking();
+        
+        // Then: Masking should be active again
+        assertTrue(stdoutMaskingService.isMaskingActive(), "Stdout masking should be active again");
+    }
+
+    @Test
     void testErrorHandlingDoesNotBreakLogging() {
         // Given: A configuration that might throw an exception (simulated by null service)
         PiiMaskingLoggingConfiguration faultyConfiguration = 
@@ -189,5 +282,39 @@ public class PiiMaskingLoggingConfigurationTest {
         assertDoesNotThrow(() -> {
             testLogger.info("This should still work");
         }, "Logging should still work even if PII masking setup fails");
+    }
+
+    @Test
+    void testStdoutMaskingEnabledByDefaultInProperties() {
+        // Given: Default properties configuration
+        PiiMaskingProperties defaultProperties = new PiiMaskingProperties();
+
+        // Then: Stdout masking should be enabled by default
+        assertTrue(defaultProperties.isEnableStdoutMasking(), 
+            "Stdout masking should be enabled by default for all Spring applications");
+        
+        // And: PII masking should also be enabled by default
+        assertTrue(defaultProperties.isEnabled(), 
+            "PII masking should be enabled by default");
+        
+        // And: Auto mask logs should be enabled by default
+        assertTrue(defaultProperties.isAutoMaskLogs(), 
+            "Auto mask logs should be enabled by default");
+    }
+
+    @Test
+    void testStdoutMaskingCanBeDisabledViaProperties() {
+        // Given: Properties with stdout masking disabled
+        properties.setEnableStdoutMasking(false);
+
+        // When: Creating a new stdout masking service (simulating auto-configuration)
+        StdoutMaskingService disabledStdoutService = new StdoutMaskingService(piiMaskingService);
+
+        // Then: Service should be created but not activated by default
+        assertNotNull(disabledStdoutService, "StdoutMaskingService should be created");
+        
+        // Verify property is set correctly
+        assertFalse(properties.isEnableStdoutMasking(), 
+            "enableStdoutMasking property should be false when disabled");
     }
 }
