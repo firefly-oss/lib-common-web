@@ -86,6 +86,11 @@ public class PiiMaskingProperties {
     private boolean autoMaskLogs = true;
 
     /**
+     * Whether to enable stdout masking for System.out.println calls
+     */
+    private boolean enableStdoutMasking = true;
+
+    /**
      * Case sensitivity for pattern matching
      */
     private boolean caseSensitive = false;
@@ -359,6 +364,14 @@ public class PiiMaskingProperties {
 
     public void setAutoMaskLogs(boolean autoMaskLogs) {
         this.autoMaskLogs = autoMaskLogs;
+    }
+
+    public boolean isEnableStdoutMasking() {
+        return enableStdoutMasking;
+    }
+
+    public void setEnableStdoutMasking(boolean enableStdoutMasking) {
+        this.enableStdoutMasking = enableStdoutMasking;
     }
 
     public boolean isCaseSensitive() {
