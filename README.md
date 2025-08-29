@@ -74,7 +74,7 @@ Add the dependency to your `pom.xml`:
 
 ```xml
 <dependency>
-    <groupId>com.catalis</groupId>
+    <groupId>com.firefly</groupId>
     <artifactId>lib-common-web</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
@@ -115,7 +115,7 @@ idempotency:
 # Note: HTTP request logging is handled by Spring Boot's built-in logging
 logging:
   level:
-    com.catalis.common.web: DEBUG  # Enable detailed logging
+    com.firefly.common.web: DEBUG  # Enable detailed logging
 ```
 
 4. **Start using the features**:
@@ -507,7 +507,7 @@ Structured logging for HTTP requests and responses with correlation support.
 # Configure logging levels for detailed request/response logging
 logging:
   level:
-    com.catalis.common.web.logging: DEBUG  # Enable HTTP request logging
+    com.firefly.common.web.logging: DEBUG  # Enable HTTP request logging
     org.springframework.web.reactive: DEBUG  # Enable WebFlux logging
     reactor.netty.http.server: DEBUG  # Enable Netty HTTP server logging
 ```
@@ -803,7 +803,7 @@ springdoc:
 # Logging configuration for request/response logging
 logging:
   level:
-    com.catalis.common.web: INFO  # Set to DEBUG for detailed request logging
+    com.firefly.common.web: INFO  # Set to DEBUG for detailed request logging
     org.springframework.web.reactive: DEBUG  # Enable WebFlux request logging
 ```
 
