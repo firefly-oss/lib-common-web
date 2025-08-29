@@ -839,7 +839,7 @@ public class OrderController {
 public class IdempotencyConfig {
     
     @Bean
-    @ConditionalOnProperty(value = "catalis.common.web.idempotency.cache-type", havingValue = "redis")
+    @ConditionalOnProperty(value = "getfirefly.iomon.web.idempotency.cache-type", havingValue = "redis")
     public IdempotencyCache redisIdempotencyCache(ReactiveRedisTemplate<String, CachedResponse> redisTemplate,
                                                   IdempotencyProperties properties) {
         return new RedisIdempotencyCache(redisTemplate, properties);

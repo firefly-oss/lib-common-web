@@ -114,21 +114,21 @@ public class OpenAPIConfiguration {
         // Add development server
         if (environment.acceptsProfiles(Profiles.of("dev"))) {
             servers.add(new Server()
-                    .url("https://dev-api.catalis.com" + contextPath)
+                    .url("https://dev-api.getfirefly.io" + contextPath)
                     .description("Development Server"));
         }
 
         // Add staging server
         if (environment.acceptsProfiles(Profiles.of("staging"))) {
             servers.add(new Server()
-                    .url("https://staging-api.catalis.com" + contextPath)
+                    .url("https://staging-api.getfirefly.io" + contextPath)
                     .description("Staging Server"));
         }
 
         // Add production server
         if (environment.acceptsProfiles(Profiles.of("prod"))) {
             servers.add(new Server()
-                    .url("https://api.catalis.com" + contextPath)
+                    .url("https://api.getfirefly.io" + contextPath)
                     .description("Production Server"));
         }
 
