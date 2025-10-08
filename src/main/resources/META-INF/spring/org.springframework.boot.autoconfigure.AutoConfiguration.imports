@@ -1,9 +1,5 @@
 com.firefly.common.web.openapi.OpenAPIConfiguration
 com.firefly.common.web.configuration.ExceptionHandlerConfiguration
-com.firefly.common.web.idempotency.config.InMemoryIdempotencyConfig
-com.firefly.common.web.idempotency.config.RedisIdempotencyConfig
-com.firefly.common.web.idempotency.config.HazelcastIdempotencyConfig
-com.firefly.common.web.idempotency.config.EhCacheIdempotencyConfig
-com.firefly.common.web.idempotency.filter.IdempotencyWebFilter
+com.firefly.common.web.idempotency.config.IdempotencyAutoConfiguration
 com.firefly.common.web.logging.config.PiiMaskingAutoConfiguration
 com.firefly.common.web.logging.filter.HttpRequestLoggingWebFilter

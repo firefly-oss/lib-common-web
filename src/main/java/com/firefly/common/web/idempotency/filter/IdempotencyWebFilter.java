@@ -62,7 +62,6 @@ public class IdempotencyWebFilter implements WebFilter {
             HttpMethod.POST, HttpMethod.PUT, HttpMethod.PATCH);
 
     private final IdempotencyCache cache;
-    private final boolean redisEnabled;
     private final String idempotencyHeaderName;
     private final Map<String, Sinks.One<CachedResponse>> inFlight = new ConcurrentHashMap<>();
 
@@ -75,7 +74,6 @@ public class IdempotencyWebFilter implements WebFilter {
     @Autowired
     public IdempotencyWebFilter(IdempotencyProperties properties, IdempotencyCache cache) {
         this.cache = cache;
-        this.redisEnabled = properties.getCache().getRedis().isEnabled();
         this.idempotencyHeaderName = properties.getHeaderName();
     }
 
