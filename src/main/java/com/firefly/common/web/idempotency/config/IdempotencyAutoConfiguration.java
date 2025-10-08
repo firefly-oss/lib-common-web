@@ -80,12 +80,12 @@ public class IdempotencyAutoConfiguration {
     public IdempotencyCache idempotencyCache(
             FireflyCacheManager cacheManager,
             IdempotencyProperties properties) {
-        
+
         log.info("Configuring idempotency cache using lib-common-cache");
-        log.info("Cache name: {}, TTL: {} hours", 
-                properties.getCache().getCacheName(), 
+        log.info("Cache type: {}, TTL: {} hours",
+                cacheManager.getCacheType(),
                 properties.getCache().getTtlHours());
-        
+
         return new FireflyCacheIdempotencyAdapter(cacheManager, properties);
     }
 
