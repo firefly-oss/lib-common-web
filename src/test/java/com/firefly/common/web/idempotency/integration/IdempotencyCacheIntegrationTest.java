@@ -17,7 +17,6 @@
 package com.firefly.common.web.idempotency.integration;
 
 import com.firefly.common.cache.config.CacheAutoConfiguration;
-import com.firefly.common.cache.core.CacheAdapter;
 import com.firefly.common.cache.core.CacheType;
 import com.firefly.common.cache.manager.FireflyCacheManager;
 import com.firefly.common.web.idempotency.cache.IdempotencyCache;
@@ -38,6 +37,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration test that verifies lib-common-web idempotency works correctly with lib-common-cache using real Caffeine cache.
  * This test uses the actual CacheAutoConfiguration from lib-common-cache and IdempotencyAutoConfiguration to ensure
  * end-to-end functionality with real Caffeine caching.
+ *
+ * <p>The idempotency cache uses the single unified cache from FireflyCacheManager with keys prefixed as "firefly:cache:default::idempotency:{key}".</p>
  */
 @SpringBootTest(classes = {
     CacheAutoConfiguration.class,
@@ -46,11 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestPropertySource(properties = {
     "firefly.cache.enabled=true",
     "firefly.cache.default-cache-type=CAFFEINE",
-    "firefly.cache.caffeine.idempotency.maximum-size=100",
-    "firefly.cache.caffeine.idempotency.expire-after-write=PT5M",
-    "firefly.cache.caffeine.idempotency.record-stats=true",
     "idempotency.header-name=X-Idempotency-Key",
-    "idempotency.cache.cache-name=idempotency",
     "idempotency.cache.ttl-hours=1"
 })
 class IdempotencyCacheIntegrationTest {
@@ -64,16 +61,10 @@ class IdempotencyCacheIntegrationTest {
     @Autowired
     private IdempotencyProperties properties;
 
-    private CacheAdapter cache;
-
     @BeforeEach
     void setUp() {
-        // Get cache adapter directly
-        cache = cacheManager.getCache("idempotency");
-        assertThat(cache).isNotNull();
-
         // Clear cache before each test
-        cache.clear().block();
+        cacheManager.clear().block();
     }
 
     @Test
@@ -81,12 +72,9 @@ class IdempotencyCacheIntegrationTest {
         // Verify we're using the real lib-common-cache implementation with Caffeine
         assertThat(cacheManager).isNotNull();
         assertThat(cacheManager).isInstanceOf(FireflyCacheManager.class);
-        
-        CacheAdapter cache = cacheManager.getCache("idempotency");
-        assertThat(cache).isNotNull();
-        assertThat(cache.getCacheName()).isEqualTo("idempotency");
-        assertThat(cache.getCacheType()).isEqualTo(CacheType.CAFFEINE);
-        assertThat(cache.isAvailable()).isTrue();
+        assertThat(cacheManager.getCacheName()).isEqualTo("default");
+        assertThat(cacheManager.getCacheType()).isEqualTo(CacheType.CAFFEINE);
+        assertThat(cacheManager.isAvailable()).isTrue();
     }
 
     @Test
@@ -95,7 +83,6 @@ class IdempotencyCacheIntegrationTest {
         assertThat(idempotencyCache).isNotNull();
         assertThat(properties).isNotNull();
         assertThat(properties.getHeaderName()).isEqualTo("X-Idempotency-Key");
-        assertThat(properties.getCache().getCacheName()).isEqualTo("idempotency");
         assertThat(properties.getCache().getTtlHours()).isEqualTo(1);
     }
 
@@ -166,14 +153,15 @@ class IdempotencyCacheIntegrationTest {
 
         // When - Cache and then evict
         idempotencyCache.put(key, response).block();
-        
+
         // Verify it's cached
         StepVerifier.create(idempotencyCache.get(key))
             .assertNext(cached -> assertThat(cached).isNotNull())
             .verifyComplete();
 
-        // Evict using CacheAdapter directly
-        StepVerifier.create(cache.evict(key))
+        // Evict using FireflyCacheManager directly with prefixed key
+        String prefixedKey = ":idempotency:" + key;
+        StepVerifier.create(cacheManager.evict(prefixedKey))
             .expectNext(true)
             .verifyComplete();
 
@@ -194,8 +182,8 @@ class IdempotencyCacheIntegrationTest {
         idempotencyCache.put(key1, response1).block();
         idempotencyCache.put(key2, response2).block();
 
-        // Clear all cache using CacheAdapter directly
-        StepVerifier.create(cache.clear())
+        // Clear all cache using FireflyCacheManager directly
+        StepVerifier.create(cacheManager.clear())
             .verifyComplete();
 
         // Then - All entries should be cleared
@@ -210,15 +198,15 @@ class IdempotencyCacheIntegrationTest {
     void shouldVerifyRealCaffeineOperations() {
         // Given
         String key = "direct-cache-key";
+        String prefixedKey = "::idempotency::" + key;
         CachedResponse value = new CachedResponse(200, "direct test".getBytes(), MediaType.APPLICATION_JSON);
-        CacheAdapter cache = cacheManager.getCache("idempotency");
 
-        // When - Put value directly in Caffeine cache
-        StepVerifier.create(cache.put(key, value))
+        // When - Put value directly in cache with prefixed key
+        StepVerifier.create(cacheManager.put(prefixedKey, value))
             .verifyComplete();
 
-        // Then - Get value from Caffeine cache
-        StepVerifier.create(cache.<String, CachedResponse>get(key, CachedResponse.class))
+        // Then - Get value from cache using prefixed key
+        StepVerifier.create(cacheManager.<String, CachedResponse>get(prefixedKey, CachedResponse.class))
             .assertNext(result -> {
                 assertThat(result).isPresent();
                 assertThat(result.get().getStatus()).isEqualTo(200);
@@ -227,12 +215,12 @@ class IdempotencyCacheIntegrationTest {
             .verifyComplete();
 
         // When - Evict value
-        StepVerifier.create(cache.evict(key))
+        StepVerifier.create(cacheManager.evict(prefixedKey))
             .expectNext(true)
             .verifyComplete();
 
-        // Then - Verify evicted from Caffeine
-        StepVerifier.create(cache.<String, CachedResponse>get(key, CachedResponse.class))
+        // Then - Verify evicted from cache
+        StepVerifier.create(cacheManager.<String, CachedResponse>get(prefixedKey, CachedResponse.class))
             .assertNext(result -> assertThat(result).isEmpty())
             .verifyComplete();
     }
@@ -242,7 +230,6 @@ class IdempotencyCacheIntegrationTest {
         // Given
         String key = "stats-key";
         CachedResponse response = new CachedResponse(200, "stats test".getBytes(), MediaType.APPLICATION_JSON);
-        CacheAdapter cache = cacheManager.getCache("idempotency");
 
         // When - Perform cache operations (miss, then hit)
         idempotencyCache.get(key).block();  // Miss
@@ -250,10 +237,10 @@ class IdempotencyCacheIntegrationTest {
         idempotencyCache.get(key).block();  // Hit
 
         // Then - Verify Caffeine statistics are available
-        StepVerifier.create(cache.getStats())
+        StepVerifier.create(cacheManager.getStats())
             .assertNext(stats -> {
                 assertThat(stats).isNotNull();
-                assertThat(stats.getCacheName()).isEqualTo("idempotency");
+                assertThat(stats.getCacheName()).isEqualTo("default");
                 assertThat(stats.getCacheType()).isEqualTo(CacheType.CAFFEINE);
                 assertThat(stats.getHitCount()).isGreaterThan(0);
             })
@@ -281,6 +268,38 @@ class IdempotencyCacheIntegrationTest {
                 assertThat(cached.getBody()).hasSize(1024);
                 assertThat(cached.getBody()).isEqualTo(largeBody);
                 assertThat(cached.getContentType()).isEqualTo(MediaType.APPLICATION_OCTET_STREAM);
+            })
+            .verifyComplete();
+    }
+
+    @Test
+    void shouldVerifyKeyFormatWithCacheName() {
+        // Given
+        String idempotencyKey = "test-key-format";
+        CachedResponse response = new CachedResponse(200, "test".getBytes(), MediaType.APPLICATION_JSON);
+
+        // When - Cache using idempotency cache
+        StepVerifier.create(idempotencyCache.put(idempotencyKey, response))
+            .verifyComplete();
+
+        // Then - Verify the key format includes cache name
+        // The final key should be: firefly:cache:default::idempotency:test-key-format
+        // We verify by checking all keys in the cache
+        StepVerifier.create(cacheManager.keys())
+            .assertNext(keys -> {
+                assertThat(keys).isNotEmpty();
+                // The key should contain the idempotency prefix
+                boolean hasCorrectKey = keys.stream()
+                    .anyMatch(key -> key.toString().contains(":idempotency:" + idempotencyKey));
+                assertThat(hasCorrectKey).isTrue();
+            })
+            .verifyComplete();
+
+        // Verify we can retrieve it using the idempotency cache
+        StepVerifier.create(idempotencyCache.get(idempotencyKey))
+            .assertNext(cached -> {
+                assertThat(cached).isNotNull();
+                assertThat(cached.getStatus()).isEqualTo(200);
             })
             .verifyComplete();
     }
