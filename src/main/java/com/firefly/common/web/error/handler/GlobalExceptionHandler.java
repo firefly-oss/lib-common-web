@@ -17,16 +17,27 @@
 
 package com.firefly.common.web.error.handler;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.firefly.common.web.error.config.ErrorHandlingProperties;
 import com.firefly.common.web.error.converter.ExceptionConverterService;
-import com.firefly.common.web.error.exceptions.BusinessException;
-import com.firefly.common.web.error.exceptions.ValidationException;
+import com.firefly.common.web.error.exceptions.*;
 import com.firefly.common.web.error.models.ErrorResponse;
+import com.firefly.common.web.error.service.ErrorResponseCache;
+import com.firefly.common.web.error.service.ErrorResponseNegotiator;
 import com.firefly.common.web.logging.service.PiiMaskingService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.tracing.Tracer;
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.reactive.error.ErrorWebExceptionHandler;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.validation.FieldError;
@@ -36,24 +47,31 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebExchange;
-
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import reactor.core.publisher.Mono;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
 /**
- * Global exception handler for the application.
- * This class handles all exceptions thrown by the application and converts them
- * into standardized error responses. It implements Spring's ErrorWebExceptionHandler
- * to provide consistent error handling across the application.
+ * Enhanced global exception handler with enterprise-grade features.
+ *
+ * <p>This class provides comprehensive error handling with:</p>
+ * <ul>
+ *   <li>Distributed tracing integration (OpenTelemetry, Zipkin, Jaeger)</li>
+ *   <li>Environment-aware error details (dev vs production)</li>
+ *   <li>Metrics collection for observability</li>
+ *   <li>Circuit breaker and resilience pattern support</li>
+ *   <li>RFC 7807 Problem Details compliance</li>
+ *   <li>PII masking and security features</li>
+ *   <li>Comprehensive error categorization and severity levels</li>
+ * </ul>
+ *
+ * @see ErrorResponse
+ * @see ErrorHandlingProperties
  */
 @Slf4j
 @Hidden
@@ -64,115 +82,153 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
 
     private final ExceptionConverterService converterService;
     private final Optional<PiiMaskingService> piiMaskingService;
+    private final ErrorHandlingProperties errorProperties;
+    private final Optional<Tracer> tracer;
+    private final Optional<MeterRegistry> meterRegistry;
+    private final Environment environment;
+    private final ObjectMapper objectMapper;
+    private final ErrorResponseNegotiator responseNegotiator;
+    private final Optional<ErrorResponseCache> errorResponseCache;
+
+    @Value("${spring.application.name:unknown}")
+    private String applicationName;
+
+    // Metrics
+    private final Map<String, Counter> errorCounters = new HashMap<>();
+    private final Map<String, Timer> errorTimers = new HashMap<>();
 
     /**
-     * Creates a new GlobalExceptionHandler with the given converter service and optional PII masking service.
+     * Creates a new GlobalExceptionHandler with comprehensive dependencies.
      *
      * @param converterService the service used to convert exceptions to business exceptions
      * @param piiMaskingService optional service used to mask PII data in error messages
+     * @param errorProperties configuration properties for error handling
+     * @param tracer optional distributed tracing tracer
+     * @param meterRegistry optional metrics registry
+     * @param environment Spring environment for profile detection
+     * @param objectMapper Jackson ObjectMapper for JSON serialization
+     * @param responseNegotiator service for content negotiation
+     * @param errorResponseCache optional error response cache
      */
-    public GlobalExceptionHandler(ExceptionConverterService converterService, 
-                                Optional<PiiMaskingService> piiMaskingService) {
+    public GlobalExceptionHandler(ExceptionConverterService converterService,
+                                   Optional<PiiMaskingService> piiMaskingService,
+                                   ErrorHandlingProperties errorProperties,
+                                   Optional<Tracer> tracer,
+                                   Optional<MeterRegistry> meterRegistry,
+                                   Environment environment,
+                                   ObjectMapper objectMapper,
+                                   ErrorResponseNegotiator responseNegotiator,
+                                   Optional<ErrorResponseCache> errorResponseCache) {
         this.converterService = converterService;
         this.piiMaskingService = piiMaskingService;
+        this.errorProperties = errorProperties;
+        this.tracer = tracer;
+        this.meterRegistry = meterRegistry;
+        this.environment = environment;
+        this.objectMapper = objectMapper;
+        this.responseNegotiator = responseNegotiator;
+        this.errorResponseCache = errorResponseCache;
+
+        // Log cache status
+        errorResponseCache.ifPresent(cache ->
+                log.info("Error response caching is ENABLED (maxSize={}, ttl={}s)",
+                        errorProperties.getErrorCacheMaxSize(),
+                        errorProperties.getErrorCacheTtlSeconds())
+        );
     }
 
     @Override
     public Mono<Void> handle(ServerWebExchange exchange, Throwable ex) {
-        // If the exception is already a BusinessException, handle it directly
-        if (ex instanceof BusinessException businessException) {
-            return handleBusinessException(exchange, businessException);
-        }
+        long startTime = System.currentTimeMillis();
 
-        // For ValidationException, use the specialized handler
-        if (ex instanceof ValidationException validationException) {
-            return handleCustomValidationException(exchange, validationException);
-        }
+        return Mono.defer(() -> {
+            // Record error metrics
+            recordErrorMetric(ex);
 
-        // For WebExchangeBindException, use the specialized handler
-        if (ex instanceof WebExchangeBindException validationException) {
-            return handleValidationException(exchange, validationException);
-        }
+            // Handle specific exception types
+            if (ex instanceof BusinessException businessException) {
+                return handleBusinessException(exchange, businessException);
+            }
 
-        // For ResponseStatusException, use the specialized handler
-        if (ex instanceof ResponseStatusException responseStatusException) {
-            return handleResponseStatusException(exchange, responseStatusException);
-        }
+            if (ex instanceof ValidationException validationException) {
+                return handleCustomValidationException(exchange, validationException);
+            }
 
-        // For all other exceptions, try to convert them to a BusinessException
-        try {
-            BusinessException convertedException = converterService.convertException(ex);
-            return handleBusinessException(exchange, convertedException);
-        } catch (Exception conversionError) {
-            // If conversion fails, handle as an unexpected error
-            log.error("Error converting exception", conversionError);
-            return handleUnexpectedError(exchange, ex);
-        }
+            if (ex instanceof WebExchangeBindException validationException) {
+                return handleValidationException(exchange, validationException);
+            }
+
+            if (ex instanceof ResponseStatusException responseStatusException) {
+                return handleResponseStatusException(exchange, responseStatusException);
+            }
+
+            // Try to convert other exceptions to BusinessException
+            try {
+                BusinessException convertedException = converterService.convertException(ex);
+                return handleBusinessException(exchange, convertedException);
+            } catch (Exception conversionError) {
+                log.error("Error converting exception", conversionError);
+                return handleUnexpectedError(exchange, ex);
+            }
+        }).doFinally(signalType -> {
+            // Record error handling duration
+            long duration = System.currentTimeMillis() - startTime;
+            recordErrorDuration(ex, duration);
+        });
     }
 
     @ExceptionHandler(BusinessException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     private Mono<Void> handleBusinessException(ServerWebExchange exchange, BusinessException ex) {
-        String maskedMessage = maskExceptionMessage("Business exception occurred: " + ex.getMessage());
-        log.error(maskedMessage, ex);
+        // Log with appropriate level based on status code
+        logError(ex, exchange);
 
-        // Create a more detailed error response with additional context
+        // Build comprehensive error response
         var builder = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(ex.getStatus().value())
                 .error(ex.getStatus().getReasonPhrase())
-                .message(ex.getMessage())
+                .message(maskSensitiveData(ex.getMessage()))
                 .path(exchange.getRequest().getPath().value())
-                .traceId(UUID.randomUUID().toString())
                 .code(ex.getCode())
                 .metadata(ex.getMetadata());
 
-        // Add suggestion from metadata if available, otherwise use default suggestions
-        Map<String, Object> metadata = ex.getMetadata();
-        if (metadata != null && metadata.containsKey("suggestion")) {
-            builder.suggestion(metadata.get("suggestion").toString());
-        } else {
-            // Add suggestion based on the exception type
-            if (ex.getStatus() == HttpStatus.NOT_FOUND) {
-                builder.suggestion("Verify the resource identifier and ensure it exists.");
-            } else if (ex.getStatus() == HttpStatus.BAD_REQUEST) {
-                builder.suggestion("Check your request parameters and try again.");
-            } else if (ex.getStatus() == HttpStatus.UNAUTHORIZED) {
-                builder.suggestion("Please authenticate and try again.");
-            } else if (ex.getStatus() == HttpStatus.FORBIDDEN) {
-                builder.suggestion("You don't have permission to access this resource. Contact an administrator if you need access.");
-            } else if (ex.getStatus() == HttpStatus.CONFLICT) {
-                builder.suggestion("The request conflicts with the current state of the resource. Refresh and try again.");
-            } else if (ex.getStatus() == HttpStatus.TOO_MANY_REQUESTS) {
-                builder.suggestion("You've exceeded the rate limit. Please wait and try again later.");
-            } else if (ex.getStatus() == HttpStatus.PAYLOAD_TOO_LARGE) {
-                builder.suggestion("The request payload is too large. Try reducing the size of your request.");
-            } else if (ex.getStatus() == HttpStatus.UNSUPPORTED_MEDIA_TYPE) {
-                builder.suggestion("The request format is not supported. Check the Content-Type header.");
-            } else if (ex.getStatus() == HttpStatus.INTERNAL_SERVER_ERROR) {
-                builder.suggestion("An unexpected error occurred. Please contact support with the trace ID.");
-            }
-        }
+        // Add distributed tracing information
+        enrichWithTracingInfo(builder, exchange);
 
-        // Add documentation link if available
-        String docBase = "https://api.example.com/docs/errors/";
-        if (ex.getCode() != null) {
-            builder.documentation(docBase + ex.getCode().toLowerCase());
-        }
+        // Add error categorization
+        enrichWithCategorization(builder, ex);
 
-        // Add technical details for non-production environments
-        if (ex.getCause() != null) {
-            builder.details("Caused by: " + ex.getCause().getMessage());
-        }
+        // Add resilience information if applicable
+        enrichWithResilienceInfo(builder, ex);
+
+        // Add suggestions and documentation
+        enrichWithSuggestions(builder, ex);
+        enrichWithDocumentation(builder, ex);
+
+        // Add environment-specific debug information
+        enrichWithDebugInfo(builder, ex, exchange);
 
         ErrorResponse errorResponse = builder.build();
 
+        // Set response status and headers
         exchange.getResponse().setStatusCode(ex.getStatus());
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
+        // Use content negotiation to determine response format
+        MediaType contentType = responseNegotiator.determineContentType(exchange);
+        exchange.getResponse().getHeaders().setContentType(contentType);
+        addSecurityHeaders(exchange);
+
+        // Add retry-after header if applicable
+        if (errorResponse.getRetryAfter() != null) {
+            exchange.getResponse().getHeaders().add(HttpHeaders.RETRY_AFTER,
+                String.valueOf(errorResponse.getRetryAfter()));
+        }
+
+        // Negotiate and write response
+        byte[] responseBytes = responseNegotiator.negotiate(exchange, errorResponse);
         return exchange.getResponse().writeWith(
-                Mono.just(exchange.getResponse().bufferFactory()
-                        .wrap(toJson(errorResponse).getBytes())));
+                Mono.just(exchange.getResponse().bufferFactory().wrap(responseBytes)));
     }
 
     @ExceptionHandler(ValidationException.class)
@@ -206,11 +262,14 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
                 .build();
 
         exchange.getResponse().setStatusCode(ex.getStatus());
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
+        // Use content negotiation
+        MediaType contentType = responseNegotiator.determineContentType(exchange);
+        exchange.getResponse().getHeaders().setContentType(contentType);
+
+        byte[] responseBytes = responseNegotiator.negotiate(exchange, errorResponse);
         return exchange.getResponse().writeWith(
-                Mono.just(exchange.getResponse().bufferFactory()
-                        .wrap(toJson(errorResponse).getBytes())));
+                Mono.just(exchange.getResponse().bufferFactory().wrap(responseBytes)));
     }
 
     @ExceptionHandler(WebExchangeBindException.class)
@@ -263,11 +322,14 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
                 .build();
 
         exchange.getResponse().setStatusCode(HttpStatus.BAD_REQUEST);
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
+        // Use content negotiation
+        MediaType contentType = responseNegotiator.determineContentType(exchange);
+        exchange.getResponse().getHeaders().setContentType(contentType);
+
+        byte[] responseBytes = responseNegotiator.negotiate(exchange, errorResponse);
         return exchange.getResponse().writeWith(
-                Mono.just(exchange.getResponse().bufferFactory()
-                        .wrap(toJson(errorResponse).getBytes())));
+                Mono.just(exchange.getResponse().bufferFactory().wrap(responseBytes)));
     }
 
     private Mono<Void> handleResponseStatusException(ServerWebExchange exchange, ResponseStatusException ex) {
@@ -332,11 +394,14 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
         ErrorResponse errorResponse = builder.build();
 
         exchange.getResponse().setStatusCode(ex.getStatusCode());
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
+        // Use content negotiation
+        MediaType contentType = responseNegotiator.determineContentType(exchange);
+        exchange.getResponse().getHeaders().setContentType(contentType);
+
+        byte[] responseBytes = responseNegotiator.negotiate(exchange, errorResponse);
         return exchange.getResponse().writeWith(
-                Mono.just(exchange.getResponse().bufferFactory()
-                        .wrap(toJson(errorResponse).getBytes())));
+                Mono.just(exchange.getResponse().bufferFactory().wrap(responseBytes)));
     }
 
     private Mono<Void> handleUnexpectedError(ServerWebExchange exchange, Throwable ex) {
@@ -360,35 +425,510 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
                 .build();
 
         exchange.getResponse().setStatusCode(HttpStatus.INTERNAL_SERVER_ERROR);
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
+        // Use content negotiation
+        MediaType contentType = responseNegotiator.determineContentType(exchange);
+        exchange.getResponse().getHeaders().setContentType(contentType);
+
+        byte[] responseBytes = responseNegotiator.negotiate(exchange, errorResponse);
         return exchange.getResponse().writeWith(
-                Mono.just(exchange.getResponse().bufferFactory()
-                        .wrap(toJson(errorResponse).getBytes())));
+                Mono.just(exchange.getResponse().bufferFactory().wrap(responseBytes)));
     }
 
-    private String toJson(ErrorResponse errorResponse) {
-        try {
-            return new com.fasterxml.jackson.databind.ObjectMapper()
-                    .findAndRegisterModules()
-                    .writeValueAsString(errorResponse);
-        } catch (Exception e) {
-            String maskedMessage = maskExceptionMessage("Error converting ErrorResponse to JSON: " + e.getMessage());
-            log.error(maskedMessage, e);
-            return "{\"message\":\"Error processing response\"}";
+    // ========== Helper Methods ==========
+
+    /**
+     * Enriches error response with distributed tracing information.
+     */
+    private void enrichWithTracingInfo(ErrorResponse.ErrorResponseBuilder builder, ServerWebExchange exchange) {
+        if (!errorProperties.isEnableDistributedTracing()) {
+            return;
+        }
+
+        // Extract trace ID from tracer or generate new one
+        String traceId = null;
+        String spanId = null;
+
+        if (tracer.isPresent()) {
+            var currentSpan = tracer.get().currentSpan();
+            if (currentSpan != null) {
+                var context = currentSpan.context();
+                traceId = context.traceId();
+                spanId = context.spanId();
+            }
+        }
+
+        if (traceId == null) {
+            traceId = UUID.randomUUID().toString();
+        }
+
+        if (errorProperties.isIncludeCorrelationId()) {
+            builder.traceId(traceId);
+        }
+
+        if (errorProperties.isIncludeSpanId() && spanId != null) {
+            builder.spanId(spanId);
+        }
+
+        // Extract correlation ID from headers
+        if (errorProperties.isIncludeCorrelationId()) {
+            String correlationId = exchange.getRequest().getHeaders().getFirst("X-Correlation-ID");
+            if (correlationId == null) {
+                correlationId = exchange.getRequest().getHeaders().getFirst("X-Request-ID");
+            }
+            builder.correlationId(correlationId);
+        }
+
+        // Generate request ID
+        if (errorProperties.isIncludeRequestId()) {
+            String requestId = exchange.getRequest().getId();
+            builder.requestId(requestId);
+        }
+
+        // Add instance identifier
+        if (errorProperties.getInstanceId() != null) {
+            builder.instance(errorProperties.getInstanceId());
         }
     }
 
     /**
-     * Masks PII data in exception messages using the PII masking service if available.
-     * 
-     * @param message the exception message to mask
-     * @return the masked message, or original message if PII masking is not available
+     * Enriches error response with error categorization and severity.
      */
-    private String maskExceptionMessage(String message) {
-        if (piiMaskingService.isPresent() && message != null) {
-            return piiMaskingService.get().maskExceptionMessage(message);
+    private void enrichWithCategorization(ErrorResponse.ErrorResponseBuilder builder, BusinessException ex) {
+        // Determine error category
+        ErrorResponse.ErrorCategory category = determineCategory(ex);
+        builder.category(category);
+
+        // Determine error severity
+        ErrorResponse.ErrorSeverity severity = determineSeverity(ex);
+        builder.severity(severity);
+    }
+
+    /**
+     * Enriches error response with resilience pattern information.
+     */
+    private void enrichWithResilienceInfo(ErrorResponse.ErrorResponseBuilder builder, BusinessException ex) {
+        // Handle circuit breaker exceptions
+        if (ex instanceof CircuitBreakerException) {
+            builder.retryable(true);
+            Map<String, Object> metadata = ex.getMetadata();
+
+            var cbInfo = ErrorResponse.CircuitBreakerInfo.builder()
+                    .state((String) metadata.getOrDefault("state", "OPEN"))
+                    .name((String) metadata.getOrDefault("name", "unknown"))
+                    .failureRate(((Number) metadata.getOrDefault("failureRate", 0.0)).doubleValue())
+                    .failureRateThreshold(((Number) metadata.getOrDefault("failureRateThreshold", 50.0)).doubleValue())
+                    .failureCount(((Number) metadata.getOrDefault("failureCount", 0)).intValue())
+                    .fallbackSuggestion((String) metadata.get("fallbackSuggestion"))
+                    .build();
+
+            builder.circuitBreakerInfo(cbInfo);
+
+            Integer retryAfter = (Integer) metadata.get("retryAfter");
+            if (retryAfter != null) {
+                builder.retryAfter(retryAfter);
+            }
         }
+
+        // Handle rate limit exceptions
+        if (ex instanceof RateLimitException || ex instanceof QuotaExceededException) {
+            builder.retryable(true);
+            Map<String, Object> metadata = ex.getMetadata();
+
+            var rateLimitInfo = ErrorResponse.RateLimitInfo.builder()
+                    .limit(((Number) metadata.getOrDefault("limit", 0)).intValue())
+                    .remaining(((Number) metadata.getOrDefault("remaining", 0)).intValue())
+                    .resetTime(((Number) metadata.getOrDefault("resetTime", 0L)).longValue())
+                    .windowSeconds(((Number) metadata.getOrDefault("windowSeconds", 60)).intValue())
+                    .limitType((String) metadata.getOrDefault("limitType", "unknown"))
+                    .build();
+
+            builder.rateLimitInfo(rateLimitInfo);
+
+            Integer retryAfter = (Integer) metadata.get("retryAfter");
+            if (retryAfter != null) {
+                builder.retryAfter(retryAfter);
+            }
+        }
+
+        // Handle retry exhausted exceptions
+        if (ex instanceof RetryExhaustedException) {
+            builder.retryable(false);
+            Map<String, Object> metadata = ex.getMetadata();
+            Integer retryAfter = (Integer) metadata.get("retryAfter");
+            if (retryAfter != null) {
+                builder.retryAfter(retryAfter);
+            }
+        }
+
+        // Handle bulkhead exceptions
+        if (ex instanceof BulkheadException) {
+            builder.retryable(true);
+            Map<String, Object> metadata = ex.getMetadata();
+            Integer retryAfter = (Integer) metadata.getOrDefault("retryAfter", 5);
+            builder.retryAfter(retryAfter);
+        }
+
+        // Determine if retryable for other exceptions
+        if (builder.build().getRetryable() == null) {
+            builder.retryable(isRetryable(ex));
+        }
+    }
+
+    /**
+     * Enriches error response with suggestions.
+     */
+    private void enrichWithSuggestions(ErrorResponse.ErrorResponseBuilder builder, BusinessException ex) {
+        if (!errorProperties.isIncludeSuggestions()) {
+            return;
+        }
+
+        Map<String, Object> metadata = ex.getMetadata();
+        if (metadata != null && metadata.containsKey("suggestion")) {
+            builder.suggestion(maskSensitiveData(metadata.get("suggestion").toString()));
+            return;
+        }
+
+        // Default suggestions based on status code
+        String suggestion = getDefaultSuggestion(ex.getStatus());
+        if (suggestion != null) {
+            builder.suggestion(suggestion);
+        }
+    }
+
+    /**
+     * Enriches error response with documentation links.
+     */
+    private void enrichWithDocumentation(ErrorResponse.ErrorResponseBuilder builder, BusinessException ex) {
+        if (!errorProperties.isIncludeDocumentation()) {
+            return;
+        }
+
+        String docBase = errorProperties.getDocumentationBaseUrl();
+        if (ex.getCode() != null && docBase != null) {
+            builder.documentation(docBase + "/" + ex.getCode().toLowerCase());
+        }
+
+        if (errorProperties.isIncludeHelpUrl() && errorProperties.getHelpBaseUrl() != null) {
+            String helpUrl = errorProperties.getHelpBaseUrl();
+            if (ex.getCode() != null) {
+                helpUrl += "/" + ex.getCode().toLowerCase();
+            }
+            builder.helpUrl(helpUrl);
+        }
+    }
+
+    /**
+     * Enriches error response with environment-specific debug information.
+     */
+    private void enrichWithDebugInfo(ErrorResponse.ErrorResponseBuilder builder, BusinessException ex,
+                                      ServerWebExchange exchange) {
+        // Only include debug info in non-production environments
+        if (!isProductionEnvironment()) {
+            if (errorProperties.isIncludeStackTrace() && ex.getCause() != null) {
+                builder.stackTrace(getStackTraceAsString(ex));
+            }
+
+            if (errorProperties.isIncludeDebugInfo()) {
+                Map<String, Object> debugInfo = new HashMap<>();
+                debugInfo.put("exceptionClass", ex.getClass().getName());
+                debugInfo.put("timestamp", Instant.now().toString());
+                debugInfo.put("method", exchange.getRequest().getMethod().toString());
+                debugInfo.put("headers", sanitizeHeaders(exchange.getRequest().getHeaders()));
+
+                if (errorProperties.isIncludeExceptionCause() && ex.getCause() != null) {
+                    debugInfo.put("cause", ex.getCause().getClass().getName());
+                    debugInfo.put("causeMessage", ex.getCause().getMessage());
+                }
+
+                builder.debugInfo(debugInfo);
+            }
+
+            if (errorProperties.isIncludeExceptionCause() && ex.getCause() != null) {
+                builder.details("Caused by: " + ex.getCause().getMessage());
+            }
+        }
+    }
+
+    /**
+     * Determines the error category based on exception type.
+     */
+    private ErrorResponse.ErrorCategory determineCategory(BusinessException ex) {
+        if (ex instanceof ValidationException || ex instanceof InvalidRequestException) {
+            return ErrorResponse.ErrorCategory.VALIDATION;
+        } else if (ex instanceof UnauthorizedException || ex instanceof ForbiddenException ||
+                   ex instanceof AuthorizationException) {
+            return ErrorResponse.ErrorCategory.SECURITY;
+        } else if (ex instanceof ResourceNotFoundException || ex instanceof ConflictException ||
+                   ex instanceof GoneException) {
+            return ErrorResponse.ErrorCategory.RESOURCE;
+        } else if (ex instanceof RateLimitException || ex instanceof QuotaExceededException) {
+            return ErrorResponse.ErrorCategory.RATE_LIMIT;
+        } else if (ex instanceof CircuitBreakerException || ex instanceof BulkheadException) {
+            return ErrorResponse.ErrorCategory.CIRCUIT_BREAKER;
+        } else if (ex instanceof ThirdPartyServiceException || ex instanceof BadGatewayException ||
+                   ex instanceof GatewayTimeoutException) {
+            return ErrorResponse.ErrorCategory.EXTERNAL;
+        } else if (ex instanceof ServiceException || ex instanceof ServiceUnavailableException ||
+                   ex instanceof OperationTimeoutException) {
+            return ErrorResponse.ErrorCategory.TECHNICAL;
+        } else {
+            return ErrorResponse.ErrorCategory.BUSINESS;
+        }
+    }
+
+    /**
+     * Determines the error severity based on exception type and status code.
+     */
+    private ErrorResponse.ErrorSeverity determineSeverity(BusinessException ex) {
+        HttpStatus status = ex.getStatus();
+
+        // Critical errors
+        if (status.is5xxServerError() && !(ex instanceof ServiceUnavailableException)) {
+            return ErrorResponse.ErrorSeverity.CRITICAL;
+        }
+
+        // High severity
+        if (ex instanceof CircuitBreakerException || ex instanceof DataIntegrityException ||
+            ex instanceof UnauthorizedException) {
+            return ErrorResponse.ErrorSeverity.HIGH;
+        }
+
+        // Low severity
+        if (ex instanceof ValidationException || ex instanceof ResourceNotFoundException) {
+            return ErrorResponse.ErrorSeverity.LOW;
+        }
+
+        // Default to medium
+        return ErrorResponse.ErrorSeverity.MEDIUM;
+    }
+
+    /**
+     * Determines if an exception is retryable.
+     */
+    private boolean isRetryable(BusinessException ex) {
+        // Retryable status codes
+        HttpStatus status = ex.getStatus();
+        if (status == HttpStatus.REQUEST_TIMEOUT ||
+            status == HttpStatus.TOO_MANY_REQUESTS ||
+            status == HttpStatus.SERVICE_UNAVAILABLE ||
+            status == HttpStatus.GATEWAY_TIMEOUT) {
+            return true;
+        }
+
+        // Specific exception types
+        if (ex instanceof OperationTimeoutException ||
+            ex instanceof ServiceUnavailableException ||
+            ex instanceof GatewayTimeoutException) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Gets default suggestion based on HTTP status.
+     */
+    private String getDefaultSuggestion(HttpStatus status) {
+        return switch (status) {
+            case NOT_FOUND -> "Verify the resource identifier and ensure it exists.";
+            case BAD_REQUEST -> "Check your request parameters and try again.";
+            case UNAUTHORIZED -> "Please authenticate and try again.";
+            case FORBIDDEN -> "You don't have permission to access this resource. Contact an administrator if you need access.";
+            case CONFLICT -> "The request conflicts with the current state of the resource. Refresh and try again.";
+            case TOO_MANY_REQUESTS -> "You've exceeded the rate limit. Please wait and try again later.";
+            case PAYLOAD_TOO_LARGE -> "The request payload is too large. Try reducing the size of your request.";
+            case UNSUPPORTED_MEDIA_TYPE -> "The request format is not supported. Check the Content-Type header.";
+            case INTERNAL_SERVER_ERROR -> "An unexpected error occurred. Please contact support with the trace ID.";
+            case SERVICE_UNAVAILABLE -> "The service is temporarily unavailable. Please try again later.";
+            case GATEWAY_TIMEOUT -> "The request timed out. Please try again.";
+            default -> "Please check your request and try again.";
+        };
+    }
+
+    /**
+     * Logs error with appropriate level based on status code.
+     */
+    private void logError(BusinessException ex, ServerWebExchange exchange) {
+        if (!errorProperties.isLogAllErrors()) {
+            return;
+        }
+
+        String message = String.format("Error occurred: %s - %s [%s %s]",
+                ex.getCode(), maskSensitiveData(ex.getMessage()),
+                exchange.getRequest().getMethod(), exchange.getRequest().getPath());
+
+        HttpStatus status = ex.getStatus();
+        if (status.is5xxServerError()) {
+            logAtLevel(errorProperties.getServerErrorLogLevel(), message, ex);
+        } else if (status.is4xxClientError()) {
+            logAtLevel(errorProperties.getClientErrorLogLevel(), message, ex);
+        } else {
+            log.info(message);
+        }
+    }
+
+    /**
+     * Logs message at specified level.
+     */
+    private void logAtLevel(String level, String message, Throwable ex) {
+        switch (level.toUpperCase()) {
+            case "ERROR" -> log.error(message, ex);
+            case "WARN" -> log.warn(message, ex);
+            case "INFO" -> log.info(message);
+            case "DEBUG" -> log.debug(message, ex);
+            case "TRACE" -> log.trace(message, ex);
+            default -> log.error(message, ex);
+        }
+    }
+
+    /**
+     * Records error metric.
+     */
+    private void recordErrorMetric(Throwable ex) {
+        if (!errorProperties.isEnableMetrics() || meterRegistry.isEmpty()) {
+            return;
+        }
+
+        String exceptionType = ex.getClass().getSimpleName();
+        String metricName = "errors.count";
+
+        Counter counter = errorCounters.computeIfAbsent(exceptionType, type ->
+                Counter.builder(metricName)
+                        .tag("exception", type)
+                        .tag("application", applicationName)
+                        .description("Count of errors by exception type")
+                        .register(meterRegistry.get())
+        );
+
+        counter.increment();
+    }
+
+    /**
+     * Records error handling duration.
+     */
+    private void recordErrorDuration(Throwable ex, long durationMs) {
+        if (!errorProperties.isEnableMetrics() || meterRegistry.isEmpty()) {
+            return;
+        }
+
+        String exceptionType = ex.getClass().getSimpleName();
+        String metricName = "errors.duration";
+
+        Timer timer = errorTimers.computeIfAbsent(exceptionType, type ->
+                Timer.builder(metricName)
+                        .tag("exception", type)
+                        .tag("application", applicationName)
+                        .description("Duration of error handling")
+                        .register(meterRegistry.get())
+        );
+
+        timer.record(java.time.Duration.ofMillis(durationMs));
+    }
+
+    /**
+     * Adds security headers to response.
+     */
+    private void addSecurityHeaders(ServerWebExchange exchange) {
+        HttpHeaders headers = exchange.getResponse().getHeaders();
+        headers.add("X-Content-Type-Options", "nosniff");
+        headers.add("X-Frame-Options", "DENY");
+        headers.add("X-XSS-Protection", "1; mode=block");
+    }
+
+    /**
+     * Builds an error response with caching support.
+     * Checks cache first, and if not found, builds and caches the response.
+     */
+    private Mono<ErrorResponse> buildErrorResponseWithCache(
+            ServerWebExchange exchange,
+            BusinessException ex,
+            ErrorResponse.ErrorResponseBuilder builder) {
+
+        String errorCode = ex.getCode();
+        int status = ex.getStatus().value();
+        String path = exchange.getRequest().getPath().value();
+
+        // Check cache if enabled
+        if (errorResponseCache.isPresent()) {
+            return errorResponseCache.get()
+                    .get(errorCode, status, path)
+                    .switchIfEmpty(Mono.defer(() -> {
+                        // Cache miss - build and cache the response
+                        ErrorResponse response = builder.build();
+                        return errorResponseCache.get()
+                                .put(response)
+                                .thenReturn(response);
+                    }));
+        } else {
+            // Caching disabled - just build the response
+            return Mono.just(builder.build());
+        }
+    }
+
+    /**
+     * Masks sensitive data in messages.
+     */
+    private String maskSensitiveData(String message) {
+        if (!errorProperties.isMaskSensitiveData() || message == null) {
+            return message;
+        }
+
+        if (piiMaskingService.isPresent()) {
+            return piiMaskingService.get().maskPiiData(message);
+        }
+
         return message;
     }
+
+    /**
+     * Checks if running in production environment.
+     */
+    private boolean isProductionEnvironment() {
+        return Arrays.asList(environment.getActiveProfiles()).contains("prod") ||
+               Arrays.asList(environment.getActiveProfiles()).contains("production");
+    }
+
+    /**
+     * Gets stack trace as string.
+     */
+    private String getStackTraceAsString(Throwable ex) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        ex.printStackTrace(pw);
+        return sw.toString();
+    }
+
+    /**
+     * Sanitizes headers by removing sensitive information.
+     */
+    private Map<String, String> sanitizeHeaders(HttpHeaders headers) {
+        Map<String, String> sanitized = new HashMap<>();
+        List<String> sensitiveHeaders = Arrays.asList(
+                "authorization", "cookie", "set-cookie", "x-api-key", "api-key"
+        );
+
+        headers.forEach((key, values) -> {
+            if (sensitiveHeaders.contains(key.toLowerCase())) {
+                sanitized.put(key, "***REDACTED***");
+            } else {
+                sanitized.put(key, String.join(", ", values));
+            }
+        });
+
+        return sanitized;
+    }
+
+    /**
+     * Converts ErrorResponse to JSON.
+     */
+    private String toJson(ErrorResponse errorResponse) {
+        try {
+            return objectMapper.writeValueAsString(errorResponse);
+        } catch (JsonProcessingException e) {
+            log.error("Error converting ErrorResponse to JSON", e);
+            return "{\"message\":\"Error processing response\",\"status\":500}";
+        }
+    }
 }
+

@@ -31,7 +31,9 @@ import org.springframework.context.annotation.Configuration;
 @AutoConfiguration
 @ComponentScan(basePackages = {
         "com.firefly.common.web.error.handler",
-        "com.firefly.common.web.error.converter"
+        "com.firefly.common.web.error.converter",
+        "com.firefly.common.web.error.config",
+        "com.firefly.common.web.error.service"
 })
 public class ExceptionHandlerConfiguration {
 
