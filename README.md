@@ -34,12 +34,21 @@ The Firefly Common Web Library is a comprehensive Spring Boot starter designed f
 
 ## Features
 
-### 🛡️ Exception Handling
-- **24 specialized exception types** with appropriate HTTP status code mapping
+### 🛡️ Exception Handling (Enterprise-Grade)
+- **29 specialized exception types** with appropriate HTTP status code mapping
 - **Global exception handler** with automatic conversion from standard exceptions
-- **Standardized error responses** with trace IDs, suggestions, and metadata
+- **Distributed tracing integration** (OpenTelemetry, Zipkin, Jaeger)
+- **Environment-aware error details** (dev vs production)
+- **Metrics collection** for error tracking and observability
+- **Circuit breaker & resilience pattern support** (Resilience4j integration)
+- **RFC 7807 Problem Details** compliance
+- **Standardized error responses** with trace IDs, correlation IDs, suggestions, and metadata
+- **Error categorization** (VALIDATION, BUSINESS, TECHNICAL, SECURITY, etc.)
+- **Error severity levels** (LOW, MEDIUM, HIGH, CRITICAL)
 - **Validation support** with detailed field-level error information
 - **Built-in error suggestions** and documentation links
+- **PII masking** in error responses
+- **Configurable logging levels** for client vs server errors
 
 ### 🔄 Request Idempotency
 - **Automatic idempotency** for POST, PUT, and PATCH requests
@@ -203,24 +212,173 @@ public class UserService {
 }
 ```
 
-#### Error Response Format
+#### Enhanced Error Response Format
 
-All exceptions produce standardized error responses:
+All exceptions produce comprehensive, enterprise-grade error responses with distributed tracing, categorization, and resilience information:
 
 ```json
 {
-  "timestamp": "2024-08-24T23:20:00",
+  "timestamp": "2025-10-08T23:20:00",
   "status": 404,
   "error": "Not Found",
   "message": "User not found",
   "path": "/api/users/123",
-  "traceId": "550e8400-e29b-41d4-a716-446655440000",
   "code": "USER_NOT_FOUND",
+
+  "traceId": "550e8400-e29b-41d4-a716-446655440000",
+  "spanId": "7a085853-36b1-4856-9882-33c8186afc68",
+  "correlationId": "req-123-456",
+  "requestId": "0x1234567890abcdef",
+  "instance": "user-service:pod-1",
+
+  "category": "RESOURCE",
+  "severity": "LOW",
+  "retryable": false,
+
   "suggestion": "Verify the user ID and ensure it exists.",
+  "documentation": "https://docs.example.com/errors/user_not_found",
+  "helpUrl": "https://support.example.com/help/user_not_found",
+
   "metadata": {
     "userId": "123"
   }
 }
+```
+
+**For Circuit Breaker Errors:**
+```json
+{
+  "timestamp": "2025-10-08T23:20:00",
+  "status": 503,
+  "error": "Service Unavailable",
+  "message": "Circuit breaker is open for payment-service",
+  "code": "CIRCUIT_BREAKER_OPEN",
+  "category": "CIRCUIT_BREAKER",
+  "severity": "HIGH",
+  "retryable": true,
+  "retryAfter": 30,
+  "circuitBreakerInfo": {
+    "state": "OPEN",
+    "name": "payment-service",
+    "failureRate": 75.5,
+    "failureRateThreshold": 50.0,
+    "failureCount": 15,
+    "fallbackSuggestion": "Use cached payment data or retry later"
+  }
+}
+```
+
+**For Rate Limit Errors:**
+```json
+{
+  "timestamp": "2025-10-08T23:20:00",
+  "status": 429,
+  "error": "Too Many Requests",
+  "message": "Rate limit exceeded",
+  "code": "RATE_LIMIT_EXCEEDED",
+  "category": "RATE_LIMIT",
+  "severity": "MEDIUM",
+  "retryable": true,
+  "retryAfter": 60,
+  "rateLimitInfo": {
+    "limit": 100,
+    "remaining": 0,
+    "resetTime": 1696809600,
+    "windowSeconds": 60,
+    "limitType": "user"
+  }
+}
+```
+
+#### Error Handling Configuration
+
+Configure error handling behavior with comprehensive options:
+
+```yaml
+firefly:
+  error-handling:
+    # Environment-aware settings
+    include-stack-trace: false  # Set to true in dev/test
+    include-debug-info: false   # Set to true in dev/test
+    include-exception-cause: false
+
+    # Documentation and support
+    documentation-base-url: https://docs.example.com/errors
+    help-base-url: https://support.example.com/help
+    support-email: support@example.com
+    support-phone: +1-800-SUPPORT
+
+    # Distributed tracing
+    enable-distributed-tracing: true
+    include-correlation-id: true
+    include-request-id: true
+    include-span-id: true
+    instance-id: ${spring.application.name}:${HOSTNAME:unknown}
+
+    # Observability
+    enable-metrics: true
+    log-all-errors: true
+    client-error-log-level: WARN  # For 4xx errors
+    server-error-log-level: ERROR # For 5xx errors
+
+    # Security
+    mask-sensitive-data: true
+
+    # Response customization
+    include-suggestions: true
+    include-documentation: true
+    include-help-url: true
+    max-message-length: 500
+    max-details-length: 2000
+    max-validation-errors: 100
+
+    # RFC 7807 compliance
+    enable-rfc7807: true
+
+    # Error caching (for error storms)
+    enable-error-caching: false
+    error-cache-ttl-seconds: 60
+    error-cache-max-size: 1000
+```
+
+#### New Exception Types for Resilience Patterns
+
+```java
+// Circuit Breaker
+throw new CircuitBreakerException(
+    "payment-service",
+    "OPEN",
+    75.5,
+    50.0,
+    30
+);
+
+// Bulkhead Full
+throw new BulkheadException(
+    "order-processing",
+    100,
+    5
+);
+
+// Retry Exhausted
+throw new RetryExhaustedException(
+    "external-api-call",
+    3,
+    60
+);
+
+// Rate Limit / Quota
+throw new QuotaExceededException(
+    "API_QUOTA",
+    1000,
+    3600
+);
+
+// Degraded Service
+throw new DegradedServiceException(
+    "search-service",
+    "Using cached results"
+);
 ```
 
 ### Request Idempotency
