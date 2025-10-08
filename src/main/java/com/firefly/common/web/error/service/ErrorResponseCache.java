@@ -1,21 +1,22 @@
 package com.firefly.common.web.error.service;
 
+import com.firefly.common.cache.manager.FireflyCacheManager;
 import com.firefly.common.web.error.config.ErrorHandlingProperties;
 import com.firefly.common.web.error.models.ErrorResponse;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Service for caching error responses to reduce load during error storms.
  * <p>
- * This service uses Caffeine cache to store error responses based on a cache key
+ * This service uses the Firefly Cache Manager to store error responses based on a cache key
  * that includes the error code, HTTP status, and request path. This helps prevent
  * overwhelming the system when the same error occurs repeatedly.
  * </p>
@@ -25,6 +26,7 @@ import java.util.Optional;
  * - Automatic cache key generation
  * - Cache statistics tracking
  * - Thread-safe operations
+ * - Uses unified Firefly caching abstraction (supports Caffeine, Redis, etc.)
  * </p>
  *
  * @author Firefly Team
@@ -39,25 +41,32 @@ import java.util.Optional;
 )
 public class ErrorResponseCache {
 
-    private final Cache<CacheKey, ErrorResponse> cache;
+    private static final String KEY_PREFIX = ":error:";
+
+    private final FireflyCacheManager cacheManager;
     private final ErrorHandlingProperties properties;
+    private final Duration ttl;
+
+    // Statistics tracking
+    private final AtomicLong hitCount = new AtomicLong(0);
+    private final AtomicLong missCount = new AtomicLong(0);
 
     /**
      * Creates a new ErrorResponseCache with the specified configuration.
      *
+     * @param cacheManager the Firefly cache manager
      * @param properties the error handling properties
      */
-    public ErrorResponseCache(ErrorHandlingProperties properties) {
+    public ErrorResponseCache(FireflyCacheManager cacheManager, ErrorHandlingProperties properties) {
+        this.cacheManager = cacheManager;
         this.properties = properties;
-        this.cache = Caffeine.newBuilder()
-                .maximumSize(properties.getErrorCacheMaxSize())
-                .expireAfterWrite(Duration.ofSeconds(properties.getErrorCacheTtlSeconds()))
-                .recordStats()
-                .build();
+        this.ttl = Duration.ofSeconds(properties.getErrorCacheTtlSeconds());
 
-        log.info("Error response cache initialized with maxSize={}, ttl={}s",
-                properties.getErrorCacheMaxSize(),
-                properties.getErrorCacheTtlSeconds());
+        log.info("Error response cache initialized");
+        log.info("  • Cache type: {}", cacheManager.getCacheType());
+        log.info("  • TTL: {}s", properties.getErrorCacheTtlSeconds());
+        log.info("  • Max size: {}", properties.getErrorCacheMaxSize());
+        log.info("  • Key prefix: {}", KEY_PREFIX);
     }
 
     /**
@@ -66,43 +75,60 @@ public class ErrorResponseCache {
      * @param errorCode the error code
      * @param status the HTTP status code
      * @param path the request path
-     * @return the cached error response, or empty if not found
+     * @return Mono containing the cached error response, or empty if not found
      */
-    public Optional<ErrorResponse> get(String errorCode, int status, String path) {
-        CacheKey key = new CacheKey(errorCode, status, path);
-        ErrorResponse cached = cache.getIfPresent(key);
+    public Mono<ErrorResponse> get(String errorCode, int status, String path) {
+        String cacheKey = buildKey(errorCode, status, path);
+        log.debug("Getting cached error for key: {}", cacheKey);
 
-        if (cached != null) {
-            log.debug("Cache HIT for error: code={}, status={}, path={}", errorCode, status, path);
-        } else {
-            log.debug("Cache MISS for error: code={}, status={}, path={}", errorCode, status, path);
-        }
-
-        return Optional.ofNullable(cached);
+        return cacheManager.<String, ErrorResponse>get(cacheKey, ErrorResponse.class)
+                .flatMap(optional -> {
+                    if (optional.isPresent()) {
+                        hitCount.incrementAndGet();
+                        log.debug("Cache HIT for error: code={}, status={}, path={}", errorCode, status, path);
+                        return Mono.just(optional.get());
+                    } else {
+                        missCount.incrementAndGet();
+                        log.debug("Cache MISS for error: code={}, status={}, path={}", errorCode, status, path);
+                        return Mono.empty();
+                    }
+                })
+                .onErrorResume(e -> {
+                    log.error("Error getting cached error response for key {}: {}", cacheKey, e.getMessage(), e);
+                    missCount.incrementAndGet();
+                    return Mono.empty();
+                });
     }
 
     /**
      * Caches an error response.
      *
      * @param errorResponse the error response to cache
+     * @return Mono that completes when the cache operation is done
      */
-    public void put(ErrorResponse errorResponse) {
+    public Mono<Void> put(ErrorResponse errorResponse) {
         if (errorResponse == null || errorResponse.getCode() == null) {
             log.warn("Cannot cache error response: null or missing error code");
-            return;
+            return Mono.empty();
         }
 
-        CacheKey key = new CacheKey(
+        String cacheKey = buildKey(
                 errorResponse.getCode(),
                 errorResponse.getStatus(),
                 errorResponse.getPath()
         );
 
-        cache.put(key, errorResponse);
-        log.debug("Cached error response: code={}, status={}, path={}",
+        log.debug("Caching error response: code={}, status={}, path={}",
                 errorResponse.getCode(),
                 errorResponse.getStatus(),
                 errorResponse.getPath());
+
+        return cacheManager.put(cacheKey, errorResponse, ttl)
+                .doOnSuccess(v -> log.debug("Successfully cached error response for key: {}", cacheKey))
+                .onErrorResume(e -> {
+                    log.error("Error caching error response for key {}: {}", cacheKey, e.getMessage(), e);
+                    return Mono.empty();
+                });
     }
 
     /**
@@ -111,19 +137,38 @@ public class ErrorResponseCache {
      * @param errorCode the error code
      * @param status the HTTP status code
      * @param path the request path
+     * @return Mono that completes when the invalidation is done
      */
-    public void invalidate(String errorCode, int status, String path) {
-        CacheKey key = new CacheKey(errorCode, status, path);
-        cache.invalidate(key);
-        log.debug("Invalidated cache entry: code={}, status={}, path={}", errorCode, status, path);
+    public Mono<Void> invalidate(String errorCode, int status, String path) {
+        String cacheKey = buildKey(errorCode, status, path);
+        log.debug("Invalidating cache entry: code={}, status={}, path={}", errorCode, status, path);
+
+        return cacheManager.evict(cacheKey)
+                .doOnSuccess(evicted -> log.debug("Successfully invalidated cache entry for key: {} (evicted={})", cacheKey, evicted))
+                .then()
+                .onErrorResume(e -> {
+                    log.error("Error invalidating cache entry for key {}: {}", cacheKey, e.getMessage(), e);
+                    return Mono.empty();
+                });
     }
 
     /**
      * Clears all cached error responses.
+     *
+     * @return Mono that completes when the cache is cleared
      */
-    public void clear() {
-        cache.invalidateAll();
-        log.info("Error response cache cleared");
+    public Mono<Void> clear() {
+        log.info("Clearing error response cache");
+        return cacheManager.clear()
+                .doOnSuccess(v -> {
+                    hitCount.set(0);
+                    missCount.set(0);
+                    log.info("Error response cache cleared");
+                })
+                .onErrorResume(e -> {
+                    log.error("Error clearing cache: {}", e.getMessage(), e);
+                    return Mono.empty();
+                });
     }
 
     /**
@@ -132,53 +177,19 @@ public class ErrorResponseCache {
      * @return cache statistics
      */
     public CacheStats getStats() {
-        var stats = cache.stats();
-        return new CacheStats(
-                stats.hitCount(),
-                stats.missCount(),
-                stats.hitRate(),
-                stats.evictionCount(),
-                cache.estimatedSize()
-        );
+        long hits = hitCount.get();
+        long misses = missCount.get();
+        long total = hits + misses;
+        double hitRate = total > 0 ? (double) hits / total : 0.0;
+
+        return new CacheStats(hits, misses, hitRate, 0, 0);
     }
 
     /**
-     * Cache key for error responses.
+     * Builds a cache key from error code, status, and path.
      */
-    private static class CacheKey {
-        private final String errorCode;
-        private final int status;
-        private final String path;
-
-        public CacheKey(String errorCode, int status, String path) {
-            this.errorCode = errorCode;
-            this.status = status;
-            this.path = path;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            CacheKey cacheKey = (CacheKey) o;
-            return status == cacheKey.status &&
-                    Objects.equals(errorCode, cacheKey.errorCode) &&
-                    Objects.equals(path, cacheKey.path);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(errorCode, status, path);
-        }
-
-        @Override
-        public String toString() {
-            return "CacheKey{" +
-                    "errorCode='" + errorCode + '\'' +
-                    ", status=" + status +
-                    ", path='" + path + '\'' +
-                    '}';
-        }
+    private String buildKey(String errorCode, int status, String path) {
+        return KEY_PREFIX + errorCode + ":" + status + ":" + (path != null ? path : "");
     }
 
     /**

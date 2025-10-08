@@ -91,7 +91,7 @@ public class Resilience4jExceptionConverter implements ExceptionConverter<Except
     private BusinessException convertCircuitBreakerException(Exception exception) {
         String message = exception.getMessage();
         String circuitBreakerName = extractCircuitBreakerName(message);
-        
+
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("name", circuitBreakerName);
         metadata.put("state", "OPEN");
@@ -101,14 +101,8 @@ public class Resilience4jExceptionConverter implements ExceptionConverter<Except
         metadata.put("retryAfter", 30);
         metadata.put("fallbackSuggestion", "Use cached data or retry after the circuit breaker resets");
 
-        return new CircuitBreakerException(
-                circuitBreakerName,
-                "OPEN",
-                extractFailureRate(message),
-                50.0,
-                30,
-                metadata
-        );
+        String errorMessage = String.format("Circuit breaker '%s' is OPEN and not permitting calls", circuitBreakerName);
+        return new CircuitBreakerException(errorMessage, metadata);
     }
 
     /**
@@ -117,19 +111,15 @@ public class Resilience4jExceptionConverter implements ExceptionConverter<Except
     private BusinessException convertBulkheadException(Exception exception) {
         String message = exception.getMessage();
         String bulkheadName = extractBulkheadName(message);
-        
+
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("name", bulkheadName);
         metadata.put("maxConcurrentCalls", 100); // Default value
         metadata.put("retryAfter", 5);
         metadata.put("suggestion", "The service is at capacity. Please retry after a short delay.");
 
-        return new BulkheadException(
-                bulkheadName,
-                100,
-                5,
-                metadata
-        );
+        String errorMessage = String.format("Bulkhead '%s' is full and not permitting calls", bulkheadName);
+        return new BulkheadException(errorMessage, metadata);
     }
 
     /**
@@ -138,21 +128,9 @@ public class Resilience4jExceptionConverter implements ExceptionConverter<Except
     private BusinessException convertRateLimiterException(Exception exception) {
         String message = exception.getMessage();
         String rateLimiterName = extractRateLimiterName(message);
-        
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("name", rateLimiterName);
-        metadata.put("limit", 100);
-        metadata.put("remaining", 0);
-        metadata.put("resetTime", System.currentTimeMillis() / 1000 + 60);
-        metadata.put("windowSeconds", 60);
-        metadata.put("limitType", "service");
-        metadata.put("retryAfter", 60);
 
-        return new RateLimitException(
-                "RATE_LIMIT_EXCEEDED",
-                "Rate limit exceeded for " + rateLimiterName,
-                metadata
-        );
+        String errorMessage = String.format("Rate limit exceeded for '%s'", rateLimiterName);
+        return new RateLimitException("RATE_LIMIT_EXCEEDED", errorMessage, 60);
     }
 
     /**
@@ -161,7 +139,7 @@ public class Resilience4jExceptionConverter implements ExceptionConverter<Except
     private BusinessException convertTimeoutException(Exception exception) {
         String message = exception.getMessage();
         String operationName = extractOperationName(message);
-        
+
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("operation", operationName);
         metadata.put("timeout", 0);
@@ -171,12 +149,8 @@ public class Resilience4jExceptionConverter implements ExceptionConverter<Except
         if (message != null && message.toLowerCase().contains("retry")) {
             metadata.put("maxAttempts", 3);
             metadata.put("attemptsMade", 3);
-            return new RetryExhaustedException(
-                    operationName,
-                    3,
-                    10,
-                    metadata
-            );
+            String errorMessage = String.format("All retry attempts exhausted for operation '%s'", operationName);
+            return new RetryExhaustedException(errorMessage, metadata);
         }
 
         // Otherwise, use OperationTimeoutException

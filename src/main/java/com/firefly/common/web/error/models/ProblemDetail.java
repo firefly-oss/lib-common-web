@@ -102,10 +102,8 @@ public class ProblemDetail {
                 .title(errorResponse.getError())
                 .detail(errorResponse.getMessage());
 
-        // Set type URI if available
-        if (errorResponse.getType() != null) {
-            builder.type(URI.create(errorResponse.getType()));
-        } else if (errorResponse.getCode() != null) {
+        // Set type URI based on error code
+        if (errorResponse.getCode() != null) {
             // Create a type URI from the error code
             builder.type(URI.create("https://api.firefly.com/errors/" + errorResponse.getCode().toLowerCase()));
         } else {
@@ -200,9 +198,6 @@ public class ProblemDetail {
                 .error(this.title)
                 .message(this.detail);
 
-        if (this.type != null) {
-            builder.type(this.type.toString());
-        }
         if (this.instance != null) {
             builder.instance(this.instance.toString());
         }

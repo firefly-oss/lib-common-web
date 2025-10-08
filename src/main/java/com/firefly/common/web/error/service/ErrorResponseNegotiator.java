@@ -93,9 +93,13 @@ public class ErrorResponseNegotiator {
             return MediaType.APPLICATION_JSON;
         }
 
-        // Sort by quality factor (q parameter)
+        // Sort by quality factor (q parameter) - highest quality first
         List<MediaType> sortedMediaTypes = acceptedMediaTypes.stream()
-                .sorted(MediaType.QUALITY_VALUE_COMPARATOR)
+                .sorted((m1, m2) -> {
+                    double q1 = m1.getQualityValue();
+                    double q2 = m2.getQualityValue();
+                    return Double.compare(q2, q1); // Descending order
+                })
                 .toList();
 
         // Find the first acceptable media type
