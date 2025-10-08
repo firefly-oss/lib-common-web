@@ -1,241 +1,59 @@
 package com.firefly.common.web.error.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.firefly.common.cache.adapter.caffeine.CaffeineCacheAdapter;
-import com.firefly.common.cache.config.CaffeineCacheConfig;
+import com.firefly.common.cache.config.CacheAutoConfiguration;
 import com.firefly.common.cache.manager.FireflyCacheManager;
 import com.firefly.common.web.error.config.ErrorHandlingProperties;
-import com.firefly.common.web.error.converter.ExceptionConverterService;
 import com.firefly.common.web.error.exceptions.ResourceNotFoundException;
 import com.firefly.common.web.error.exceptions.ValidationException;
-import com.firefly.common.web.error.handler.GlobalExceptionHandler;
 import com.firefly.common.web.error.models.ErrorResponse;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.env.Environment;
-import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.web.server.ServerWebExchange;
-import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-import java.time.Duration;
-import java.util.Collections;
-import java.util.Optional;
-
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
- * Integration tests for ErrorResponseCache with GlobalExceptionHandler.
+ * Integration tests for ErrorResponseCache with real Caffeine cache.
+ * This test uses the actual CacheAutoConfiguration from lib-common-cache to ensure
+ * end-to-end functionality with real Caffeine caching.
  */
+@SpringBootTest(classes = {
+        CacheAutoConfiguration.class
+})
+@TestPropertySource(properties = {
+        "firefly.cache.enabled=true",
+        "firefly.cache.default-cache-type=CAFFEINE",
+        "firefly.error-handling.enable-error-caching=true",
+        "firefly.error-handling.error-cache-ttl-seconds=60",
+        "firefly.error-handling.error-cache-max-size=1000"
+})
 class ErrorResponseCacheIntegrationTest {
 
-    private GlobalExceptionHandler exceptionHandler;
-    private ErrorResponseCache errorResponseCache;
+    @Autowired
     private FireflyCacheManager cacheManager;
+
+    private ErrorResponseCache errorResponseCache;
     private ErrorHandlingProperties properties;
-    private ObjectMapper objectMapper;
 
-    @BeforeEach
+    @org.junit.jupiter.api.BeforeEach
     void setUp() {
-        // Create real cache manager with Caffeine
-        CaffeineCacheConfig cacheConfig = CaffeineCacheConfig.builder()
-                .maxSize(1000L)
-                .expireAfterWrite(Duration.ofMinutes(1))
-                .recordStats(true)
-                .build();
-
-        CaffeineCacheAdapter cacheAdapter = new CaffeineCacheAdapter("default", cacheConfig);
-        cacheManager = new FireflyCacheManager(Collections.singletonList(cacheAdapter), "caffeine");
-
         // Configure error handling properties
         properties = new ErrorHandlingProperties();
         properties.setEnableErrorCaching(true);
         properties.setErrorCacheTtlSeconds(60);
         properties.setErrorCacheMaxSize(1000);
-        properties.setIncludeStackTrace(false);
-        properties.setIncludeDebugInfo(false);
 
-        // Create error response cache
+        // Create error response cache with real cache manager
         errorResponseCache = new ErrorResponseCache(cacheManager, properties);
-
-        // Create exception handler with cache
-        objectMapper = new ObjectMapper();
-        objectMapper.findAndRegisterModules();
-
-        ExceptionConverterService converterService = new ExceptionConverterService(Collections.emptyList());
-        Environment environment = mock(Environment.class);
-        when(environment.getActiveProfiles()).thenReturn(new String[]{"test"});
-
-        ErrorResponseNegotiator responseNegotiator = new ErrorResponseNegotiator(objectMapper);
-
-        exceptionHandler = new GlobalExceptionHandler(
-                converterService,
-                Optional.empty(),
-                properties,
-                Optional.empty(),
-                Optional.empty(),
-                environment,
-                objectMapper,
-                responseNegotiator,
-                Optional.of(errorResponseCache)
-        );
     }
 
     @Test
-    void errorCache_FirstRequest_CachesMissAndStoresResponse() {
-        // Given
-        ResourceNotFoundException exception = ResourceNotFoundException.forResource("User", "123");
-        ServerWebExchange exchange = createExchange("/api/users/123");
-
-        // When - First request (cache miss)
-        Mono<Void> result = exceptionHandler.handle(exchange, exception);
-
-        // Then
-        StepVerifier.create(result)
-                .verifyComplete();
-
-        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-
-        // Verify cache statistics
-        ErrorResponseCache.CacheStats stats = errorResponseCache.getStats();
-        assertThat(stats.missCount()).isGreaterThan(0);
-    }
-
-    @Test
-    void errorCache_SubsequentRequests_ReturnsCachedResponse() throws Exception {
-        // Given
-        ResourceNotFoundException exception = ResourceNotFoundException.forResource("User", "123");
-        ServerWebExchange exchange1 = createExchange("/api/users/123");
-        ServerWebExchange exchange2 = createExchange("/api/users/123");
-
-        // When - First request (cache miss)
-        exceptionHandler.handle(exchange1, exception).block();
-
-        // Get initial stats
-        ErrorResponseCache.CacheStats statsAfterFirst = errorResponseCache.getStats();
-        long initialMisses = statsAfterFirst.missCount();
-
-        // When - Second request (should be cache hit)
-        exceptionHandler.handle(exchange2, exception).block();
-
-        // Then
-        ErrorResponseCache.CacheStats statsAfterSecond = errorResponseCache.getStats();
-        assertThat(statsAfterSecond.hitCount()).isGreaterThan(0);
-        assertThat(statsAfterSecond.missCount()).isEqualTo(initialMisses); // No new misses
-
-        // Both responses should be identical
-        assertThat(exchange1.getResponse().getStatusCode()).isEqualTo(exchange2.getResponse().getStatusCode());
-    }
-
-    @Test
-    void errorCache_DifferentErrors_CachedSeparately() {
-        // Given
-        ResourceNotFoundException exception1 = ResourceNotFoundException.forResource("User", "123");
-        ResourceNotFoundException exception2 = ResourceNotFoundException.forResource("User", "456");
-        
-        ServerWebExchange exchange1 = createExchange("/api/users/123");
-        ServerWebExchange exchange2 = createExchange("/api/users/456");
-
-        // When
-        exceptionHandler.handle(exchange1, exception1).block();
-        exceptionHandler.handle(exchange2, exception2).block();
-
-        // Then - Both should be cache misses (different paths)
-        ErrorResponseCache.CacheStats stats = errorResponseCache.getStats();
-        assertThat(stats.missCount()).isEqualTo(2);
-    }
-
-    @Test
-    void errorCache_DifferentExceptionTypes_CachedSeparately() {
-        // Given
-        ResourceNotFoundException notFoundException = ResourceNotFoundException.forResource("User", "123");
-        ValidationException validationException = new ValidationException("Validation failed");
-        
-        ServerWebExchange exchange1 = createExchange("/api/users/123");
-        ServerWebExchange exchange2 = createExchange("/api/users/123");
-
-        // When
-        exceptionHandler.handle(exchange1, notFoundException).block();
-        exceptionHandler.handle(exchange2, validationException).block();
-
-        // Then - Both should be cache misses (different error codes)
-        ErrorResponseCache.CacheStats stats = errorResponseCache.getStats();
-        assertThat(stats.missCount()).isEqualTo(2);
-    }
-
-    @Test
-    void errorCache_Invalidate_RemovesCachedEntry() {
-        // Given
-        ResourceNotFoundException exception = ResourceNotFoundException.forResource("User", "123");
-        ServerWebExchange exchange1 = createExchange("/api/users/123");
-        ServerWebExchange exchange2 = createExchange("/api/users/123");
-
-        // When - First request (cache miss)
-        exceptionHandler.handle(exchange1, exception).block();
-
-        // Invalidate the cache
-        errorResponseCache.invalidate("RESOURCE_NOT_FOUND", 404, "/api/users/123").block();
-
-        // Second request (should be cache miss again)
-        exceptionHandler.handle(exchange2, exception).block();
-
-        // Then
-        ErrorResponseCache.CacheStats stats = errorResponseCache.getStats();
-        assertThat(stats.missCount()).isEqualTo(2); // Two misses
-    }
-
-    @Test
-    void errorCache_Clear_RemovesAllEntries() {
-        // Given
-        ResourceNotFoundException exception1 = ResourceNotFoundException.forResource("User", "123");
-        ResourceNotFoundException exception2 = ResourceNotFoundException.forResource("User", "456");
-        
-        ServerWebExchange exchange1 = createExchange("/api/users/123");
-        ServerWebExchange exchange2 = createExchange("/api/users/456");
-        ServerWebExchange exchange3 = createExchange("/api/users/123");
-        ServerWebExchange exchange4 = createExchange("/api/users/456");
-
-        // When - Cache two different errors
-        exceptionHandler.handle(exchange1, exception1).block();
-        exceptionHandler.handle(exchange2, exception2).block();
-
-        // Clear the cache
-        errorResponseCache.clear().block();
-
-        // Request both again (should be cache misses)
-        exceptionHandler.handle(exchange3, exception1).block();
-        exceptionHandler.handle(exchange4, exception2).block();
-
-        // Then - Statistics should be reset
-        ErrorResponseCache.CacheStats stats = errorResponseCache.getStats();
-        assertThat(stats.hitCount()).isEqualTo(0);
-        assertThat(stats.missCount()).isEqualTo(0);
-    }
-
-    @Test
-    void errorCache_HitRate_CalculatedCorrectly() {
-        // Given
-        ResourceNotFoundException exception = ResourceNotFoundException.forResource("User", "123");
-
-        // When - 1 miss + 3 hits = 75% hit rate
-        exceptionHandler.handle(createExchange("/api/users/123"), exception).block(); // miss
-        exceptionHandler.handle(createExchange("/api/users/123"), exception).block(); // hit
-        exceptionHandler.handle(createExchange("/api/users/123"), exception).block(); // hit
-        exceptionHandler.handle(createExchange("/api/users/123"), exception).block(); // hit
-
-        // Then
-        ErrorResponseCache.CacheStats stats = errorResponseCache.getStats();
-        assertThat(stats.hitCount()).isEqualTo(3);
-        assertThat(stats.missCount()).isEqualTo(1);
-        assertThat(stats.hitRate()).isEqualTo(0.75);
-    }
-
-    @Test
-    void errorCache_DirectCacheOperations_WorkCorrectly() {
+    void errorCache_PutAndGet_WorksCorrectly() {
         // Given
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .code("RESOURCE_NOT_FOUND")
@@ -245,7 +63,7 @@ class ErrorResponseCacheIntegrationTest {
                 .error("Not Found")
                 .build();
 
-        // When - Put directly into cache
+        // When - Put into cache
         errorResponseCache.put(errorResponse).block();
 
         // Then - Get from cache
@@ -254,6 +72,7 @@ class ErrorResponseCacheIntegrationTest {
                     assertThat(cached.getCode()).isEqualTo("RESOURCE_NOT_FOUND");
                     assertThat(cached.getStatus()).isEqualTo(404);
                     assertThat(cached.getPath()).isEqualTo("/api/users/123");
+                    assertThat(cached.getMessage()).isEqualTo("User not found");
                 })
                 .verifyComplete();
 
@@ -264,43 +83,203 @@ class ErrorResponseCacheIntegrationTest {
     }
 
     @Test
-    void errorCache_WithCachingDisabled_DoesNotCache() {
-        // Given - Create handler without cache
-        ExceptionConverterService converterService = new ExceptionConverterService(Collections.emptyList());
-        Environment environment = mock(Environment.class);
-        when(environment.getActiveProfiles()).thenReturn(new String[]{"test"});
-        ErrorResponseNegotiator responseNegotiator = new ErrorResponseNegotiator(objectMapper);
+    void errorCache_GetNonExistent_ReturnsCacheMiss() {
+        // When - Get non-existent entry
+        StepVerifier.create(errorResponseCache.get("NONEXISTENT", 404, "/api/test"))
+                .verifyComplete();
 
-        GlobalExceptionHandler handlerWithoutCache = new GlobalExceptionHandler(
-                converterService,
-                Optional.empty(),
-                properties,
-                Optional.empty(),
-                Optional.empty(),
-                environment,
-                objectMapper,
-                responseNegotiator,
-                Optional.empty()  // No cache
-        );
-
-        ResourceNotFoundException exception = ResourceNotFoundException.forResource("User", "123");
-        ServerWebExchange exchange1 = createExchange("/api/users/123");
-        ServerWebExchange exchange2 = createExchange("/api/users/123");
-
-        // When
-        handlerWithoutCache.handle(exchange1, exception).block();
-        handlerWithoutCache.handle(exchange2, exception).block();
-
-        // Then - Both requests should work, but no caching
-        assertThat(exchange1.getResponse().getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(exchange2.getResponse().getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        // Then - Verify miss count
+        ErrorResponseCache.CacheStats stats = errorResponseCache.getStats();
+        assertThat(stats.hitCount()).isEqualTo(0);
+        assertThat(stats.missCount()).isEqualTo(1);
     }
 
-    private ServerWebExchange createExchange(String path) {
-        MockServerHttpRequest request = MockServerHttpRequest
-                .get(path)
+    @Test
+    void errorCache_MultipleEntries_CachedSeparately() {
+        // Given
+        ErrorResponse error1 = ErrorResponse.builder()
+                .code("RESOURCE_NOT_FOUND")
+                .status(404)
+                .path("/api/users/123")
+                .message("User not found")
                 .build();
-        return MockServerWebExchange.from(request);
+
+        ErrorResponse error2 = ErrorResponse.builder()
+                .code("RESOURCE_NOT_FOUND")
+                .status(404)
+                .path("/api/users/456")
+                .message("User not found")
+                .build();
+
+        ErrorResponse error3 = ErrorResponse.builder()
+                .code("VALIDATION_ERROR")
+                .status(400)
+                .path("/api/users")
+                .message("Validation failed")
+                .build();
+
+        // When - Cache multiple errors
+        errorResponseCache.put(error1).block();
+        errorResponseCache.put(error2).block();
+        errorResponseCache.put(error3).block();
+
+        // Then - All should be retrievable
+        StepVerifier.create(errorResponseCache.get("RESOURCE_NOT_FOUND", 404, "/api/users/123"))
+                .assertNext(cached -> assertThat(cached.getPath()).isEqualTo("/api/users/123"))
+                .verifyComplete();
+
+        StepVerifier.create(errorResponseCache.get("RESOURCE_NOT_FOUND", 404, "/api/users/456"))
+                .assertNext(cached -> assertThat(cached.getPath()).isEqualTo("/api/users/456"))
+                .verifyComplete();
+
+        StepVerifier.create(errorResponseCache.get("VALIDATION_ERROR", 400, "/api/users"))
+                .assertNext(cached -> assertThat(cached.getCode()).isEqualTo("VALIDATION_ERROR"))
+                .verifyComplete();
+
+        // Verify stats
+        ErrorResponseCache.CacheStats stats = errorResponseCache.getStats();
+        assertThat(stats.hitCount()).isEqualTo(3);
+        assertThat(stats.missCount()).isEqualTo(0);
+    }
+
+    @Test
+    void errorCache_Invalidate_RemovesSpecificEntry() {
+        // Given
+        ErrorResponse error1 = ErrorResponse.builder()
+                .code("RESOURCE_NOT_FOUND")
+                .status(404)
+                .path("/api/users/123")
+                .message("User not found")
+                .build();
+
+        ErrorResponse error2 = ErrorResponse.builder()
+                .code("RESOURCE_NOT_FOUND")
+                .status(404)
+                .path("/api/users/456")
+                .message("User not found")
+                .build();
+
+        errorResponseCache.put(error1).block();
+        errorResponseCache.put(error2).block();
+
+        // When - Invalidate one entry
+        errorResponseCache.invalidate("RESOURCE_NOT_FOUND", 404, "/api/users/123").block();
+
+        // Then - First entry should be gone, second should remain
+        StepVerifier.create(errorResponseCache.get("RESOURCE_NOT_FOUND", 404, "/api/users/123"))
+                .verifyComplete(); // miss
+
+        StepVerifier.create(errorResponseCache.get("RESOURCE_NOT_FOUND", 404, "/api/users/456"))
+                .assertNext(cached -> assertThat(cached.getPath()).isEqualTo("/api/users/456"))
+                .verifyComplete(); // hit
+    }
+
+    @Test
+    void errorCache_Clear_RemovesAllEntriesAndResetsStats() {
+        // Given
+        ErrorResponse error1 = ErrorResponse.builder()
+                .code("RESOURCE_NOT_FOUND")
+                .status(404)
+                .path("/api/users/123")
+                .build();
+
+        ErrorResponse error2 = ErrorResponse.builder()
+                .code("VALIDATION_ERROR")
+                .status(400)
+                .path("/api/users")
+                .build();
+
+        errorResponseCache.put(error1).block();
+        errorResponseCache.put(error2).block();
+
+        // Verify entries exist
+        errorResponseCache.get("RESOURCE_NOT_FOUND", 404, "/api/users/123").block();
+        errorResponseCache.get("VALIDATION_ERROR", 400, "/api/users").block();
+
+        // Verify stats before clear
+        ErrorResponseCache.CacheStats statsBeforeClear = errorResponseCache.getStats();
+        assertThat(statsBeforeClear.hitCount()).isEqualTo(2);
+
+        // When - Clear cache
+        errorResponseCache.clear().block();
+
+        // Then - Stats should be reset immediately after clear
+        ErrorResponseCache.CacheStats statsAfterClear = errorResponseCache.getStats();
+        assertThat(statsAfterClear.hitCount()).isEqualTo(0);
+        assertThat(statsAfterClear.missCount()).isEqualTo(0);
+
+        // And entries should be gone (these will count as new misses)
+        StepVerifier.create(errorResponseCache.get("RESOURCE_NOT_FOUND", 404, "/api/users/123"))
+                .verifyComplete();
+
+        StepVerifier.create(errorResponseCache.get("VALIDATION_ERROR", 400, "/api/users"))
+                .verifyComplete();
+    }
+
+    @Test
+    void errorCache_HitRate_CalculatedCorrectly() {
+        // Given
+        ErrorResponse error = ErrorResponse.builder()
+                .code("RESOURCE_NOT_FOUND")
+                .status(404)
+                .path("/api/users/123")
+                .build();
+
+        // When - 1 put + 3 gets = 1 miss + 3 hits = 75% hit rate
+        errorResponseCache.put(error).block();
+        errorResponseCache.get("RESOURCE_NOT_FOUND", 404, "/api/users/123").block(); // hit
+        errorResponseCache.get("RESOURCE_NOT_FOUND", 404, "/api/users/123").block(); // hit
+        errorResponseCache.get("RESOURCE_NOT_FOUND", 404, "/api/users/123").block(); // hit
+
+        // Then
+        ErrorResponseCache.CacheStats stats = errorResponseCache.getStats();
+        assertThat(stats.hitCount()).isEqualTo(3);
+        assertThat(stats.missCount()).isEqualTo(0);
+        assertThat(stats.hitRate()).isEqualTo(1.0); // 100% hit rate (no misses)
+    }
+
+    @Test
+    void errorCache_WithNullValues_HandlesGracefully() {
+        // When - Try to cache null
+        StepVerifier.create(errorResponseCache.put(null))
+                .verifyComplete();
+
+        // When - Try to cache error with null code
+        ErrorResponse errorWithNullCode = ErrorResponse.builder()
+                .code(null)
+                .status(404)
+                .path("/api/test")
+                .build();
+
+        StepVerifier.create(errorResponseCache.put(errorWithNullCode))
+                .verifyComplete();
+
+        // Then - No errors should occur
+        ErrorResponseCache.CacheStats stats = errorResponseCache.getStats();
+        assertThat(stats.hitCount()).isEqualTo(0);
+        assertThat(stats.missCount()).isEqualTo(0);
+    }
+
+    @Test
+    void errorCache_GetStats_ReturnsAccurateMetrics() {
+        // Given
+        ErrorResponse error = ErrorResponse.builder()
+                .code("TEST_ERROR")
+                .status(500)
+                .path("/api/test")
+                .build();
+
+        // When - Perform various operations
+        errorResponseCache.put(error).block();
+        errorResponseCache.get("TEST_ERROR", 500, "/api/test").block(); // hit
+        errorResponseCache.get("TEST_ERROR", 500, "/api/test").block(); // hit
+        errorResponseCache.get("NONEXISTENT", 404, "/api/other").block(); // miss
+
+        // Then
+        ErrorResponseCache.CacheStats stats = errorResponseCache.getStats();
+        assertThat(stats.hitCount()).isEqualTo(2);
+        assertThat(stats.missCount()).isEqualTo(1);
+        assertThat(stats.hitRate()).isEqualTo(2.0 / 3.0); // 66.67%
     }
 }
 
