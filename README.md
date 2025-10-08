@@ -43,7 +43,8 @@ The Firefly Common Web Library is a comprehensive Spring Boot starter designed f
 
 ### 🔄 Request Idempotency
 - **Automatic idempotency** for POST, PUT, and PATCH requests
-- **Dual cache support**: In-memory (Caffeine) and distributed (Redis)
+- **Powered by lib-common-cache**: Unified caching abstraction with multiple provider support
+- **Multiple cache providers**: Caffeine (in-memory) and Redis (distributed)
 - **Configurable TTL** and cache size limits
 - **Selective disabling** via `@DisableIdempotency` annotation
 - **Response caching and replay** functionality
@@ -93,8 +94,7 @@ The library automatically provides these key dependencies:
 - `spring-boot-starter-actuator`
 - `spring-boot-starter-validation`
 - `springdoc-openapi-starter-webflux-ui`
-- `caffeine` (for in-memory caching)
-- `spring-boot-starter-data-redis-reactive` (for distributed caching)
+- `lib-common-cache` (unified caching library with Caffeine and optional Redis support)
 
 ## Quick Start
 
@@ -107,10 +107,16 @@ The library automatically provides these key dependencies:
 idempotency:
   header-name: X-Idempotency-Key  # Default header name
   cache:
-    ttl-hours: 24  # Cache TTL in hours
-    max-entries: 10000  # Max cache entries (in-memory)
-    redis:
-      enabled: false  # Use Redis cache instead of in-memory
+    ttl-hours: 24  # Cache TTL in hours (default: 24)
+
+# Cache provider configuration (handled by lib-common-cache)
+firefly:
+  cache:
+    default-cache-type: CAFFEINE  # Options: CAFFEINE, REDIS, AUTO, NOOP
+    caffeine:
+      default:  # Single unified cache
+        maximum-size: 10000
+        expire-after-write: PT24H
 
 # Note: HTTP request logging is handled by Spring Boot's built-in logging
 logging:
@@ -221,236 +227,103 @@ All exceptions produce standardized error responses:
 
 Automatic idempotency support for POST, PUT, and PATCH requests using the `X-Idempotency-Key` header.
 
+**Powered by lib-common-cache**: The idempotency feature now uses the unified caching library (lib-common-cache) which provides a single unified cache interface across multiple cache providers (Caffeine, Redis).
+
+**Key Namespacing**: All idempotency cache entries are stored with keys prefixed as `:idempotency:` which, combined with the cache's own prefix (e.g., `firefly:cache:default:`), results in keys like `firefly:cache:default::idempotency:{idempotencyKey}` to namespace them within the shared cache managed by FireflyCacheManager.
+
 #### Configuration Options
 
 ```yaml
 idempotency:
   header-name: X-Idempotency-Key  # HTTP header name (default)
   cache:
-    ttl-hours: 1  # Cache TTL in hours (default: 24)
-    max-entries: 1000  # Max cache entries for in-memory cache (default: 10000)
-    redis:
-      enabled: false  # Set to true to use Redis instead of in-memory cache
+    ttl-hours: 24  # Cache TTL in hours (default: 24)
+
+# Cache provider configuration (handled by lib-common-cache)
+firefly:
+  cache:
+    default-cache-type: CAFFEINE  # Options: CAFFEINE, REDIS, AUTO, NOOP
+    caffeine:
+      default:  # Single unified cache configuration
+        maximum-size: 10000
+        expire-after-write: PT24H
+        record-stats: true
 ```
 
-#### Cache Implementations
+#### Cache Providers
 
-##### In-Memory Cache (Caffeine)
-- Default option for single-instance deployments
-- Configurable maximum size and TTL
+The idempotency feature uses **lib-common-cache**, a unified caching library that provides a consistent interface across multiple cache providers. This means you can easily switch between different cache implementations without changing your code.
+
+##### Caffeine (In-Memory Cache)
+- **Default option** for single-instance deployments
 - High performance with automatic eviction
-- **No additional dependencies required** (included by default)
+- Configurable maximum size and TTL
+- **No additional dependencies required** (included by default via lib-common-cache)
 
-**Dependencies:**
-```xml
-<!-- Already included in lib-common-web -->
-<dependency>
-    <groupId>com.github.ben-manes.caffeine</groupId>
-    <artifactId>caffeine</artifactId>
-</dependency>
+**Configuration:**
+```yaml
+firefly:
+  cache:
+    default-cache-type: CAFFEINE
+    caffeine:
+      idempotency:
+        maximum-size: 10000
+        expire-after-write: PT24H
+        record-stats: true
 ```
 
-##### Redis Cache
+##### Redis (Distributed Cache)
 - For distributed deployments
 - Shared across multiple application instances
-- Requires Redis connection configuration
-- **No additional dependencies required** (included by default)
+- Requires Redis server and connection configuration
+- **Requires additional dependencies**
 
 **Dependencies:**
+
+*Maven:*
 ```xml
-<!-- Already included in lib-common-web -->
 <dependency>
     <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-data-redis-reactive</artifactId>
-</dependency>
-```
-
-##### Hazelcast Cache
-- For distributed deployments with clustering support
-- Shared across multiple application instances
-- Provides high availability and fault tolerance
-- **Requires additional dependencies**
-
-**Dependencies:**
-
-*Maven:*
-```xml
-<dependency>
-    <groupId>com.hazelcast</groupId>
-    <artifactId>hazelcast-spring</artifactId>
-    <version>5.3.6</version>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
 </dependency>
 <dependency>
-    <groupId>com.hazelcast</groupId>
-    <artifactId>hazelcast</artifactId>
-    <version>5.3.6</version>
+    <groupId>io.lettuce</groupId>
+    <artifactId>lettuce-core</artifactId>
 </dependency>
 ```
 
 *Gradle:*
 ```gradle
-implementation 'com.hazelcast:hazelcast-spring:5.3.6'
-implementation 'com.hazelcast:hazelcast:5.3.6'
-```
-
-##### EhCache
-- For local deployments with disk persistence
-- Single-instance deployments that require cache persistence across restarts
-- Better performance than distributed caches for local scenarios
-- **Requires additional dependencies**
-
-**Dependencies:**
-
-*Maven:*
-```xml
-<dependency>
-    <groupId>org.ehcache</groupId>
-    <artifactId>ehcache</artifactId>
-    <version>3.10.8</version>
-</dependency>
-<dependency>
-    <groupId>javax.cache</groupId>
-    <artifactId>cache-api</artifactId>
-    <version>1.1.1</version>
-</dependency>
-```
-
-*Gradle:*
-```gradle
-implementation 'org.ehcache:ehcache:3.10.8'
-implementation 'javax.cache:cache-api:1.1.1'
+implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+implementation 'io.lettuce:lettuce-core'
 ```
 
 **Configuration:**
 ```yaml
-spring:
-  data:
+firefly:
+  cache:
+    default-cache-type: REDIS
     redis:
-      host: localhost
-      port: 6379
-      password: # Optional
-      timeout: 2000ms
-      database: 0
-      # Additional Redis configuration
+      idempotency:
+        host: localhost
+        port: 6379
+        database: 0
+        password: # Optional
+        key-prefix: "firefly:idempotency"
+        default-ttl: PT24H
 ```
 
-##### Hazelcast Configuration
+##### Automatic Cache Selection
 
-**Configuration:**
+You can also use `AUTO` mode to automatically select the best available cache provider:
+
 ```yaml
-idempotency:
+firefly:
   cache:
-    hazelcast:
-      enabled: true  # Enable Hazelcast cache
-      map-name: idempotencyCache  # Hazelcast IMap name (optional, default: idempotencyCache)
+    default-cache-type: AUTO  # Automatically selects Redis if available, otherwise Caffeine
 ```
 
-**Implementation Example:**
-
-You need to provide Hazelcast function beans in your application configuration:
-
-```java
-@Configuration
-public class HazelcastIdempotencyConfiguration {
-
-    @Autowired
-    private HazelcastInstance hazelcastInstance;
-    
-    @Autowired
-    private IdempotencyProperties properties;
-
-    @Bean
-    public Function<String, Mono<CachedResponse>> hazelcastIdempotencyGetFunction() {
-        return key -> {
-            String mapName = properties.getCache().getHazelcast().getMapName();
-            IMap<String, CachedResponse> map = hazelcastInstance.getMap(mapName);
-            return Mono.fromSupplier(() -> map.get(key))
-                    .filter(Objects::nonNull);
-        };
-    }
-
-    @Bean
-    public BiFunction<String, CachedResponse, Mono<Boolean>> hazelcastIdempotencySetFunction() {
-        return (key, response) -> {
-            String mapName = properties.getCache().getHazelcast().getMapName();
-            IMap<String, CachedResponse> map = hazelcastInstance.getMap(mapName);
-            Duration ttl = Duration.ofHours(properties.getCache().getTtlHours());
-            return Mono.fromSupplier(() -> {
-                map.put(key, response, ttl.toMillis(), TimeUnit.MILLISECONDS);
-                return true;
-            });
-        };
-    }
-}
-```
-
-##### EhCache Configuration
-
-**Configuration:**
-```yaml
-idempotency:
-  cache:
-    ehcache:
-      enabled: true  # Enable EhCache
-      cache-name: idempotencyCache  # EhCache cache name (optional, default: idempotencyCache)
-      disk-persistent: true  # Enable disk persistence (optional, default: true)
-```
-
-**Implementation Example:**
-
-You need to provide EhCache function beans in your application configuration:
-
-```java
-@Configuration
-public class EhCacheIdempotencyConfiguration {
-
-    @Autowired
-    private IdempotencyProperties properties;
-
-    @Bean
-    public CacheManager ehCacheManager() {
-        CachingProvider provider = Caching.getCachingProvider("org.ehcache.jsr107.EhcacheCachingProvider");
-        CacheManager cacheManager = provider.getCacheManager();
-        
-        // Configure cache programmatically
-        Configuration<String, CachedResponse> config = Eh107Configuration.fromEhcacheCacheConfiguration(
-            CacheConfigurationBuilder.newCacheConfigurationBuilder(
-                String.class, 
-                CachedResponse.class,
-                ResourcePoolsBuilder.heap(properties.getCache().getMaxEntries())
-                    .disk(1, MemoryUnit.GB, properties.getCache().getEhcache().isDiskPersistent())
-            )
-            .withExpiry(ExpiryPolicyBuilder.timeToLiveExpiration(
-                Duration.ofHours(properties.getCache().getTtlHours())
-            ))
-            .build()
-        );
-        
-        String cacheName = properties.getCache().getEhcache().getCacheName();
-        cacheManager.createCache(cacheName, config);
-        return cacheManager;
-    }
-
-    @Bean
-    public Function<String, Mono<CachedResponse>> ehcacheIdempotencyGetFunction(CacheManager cacheManager) {
-        return key -> {
-            String cacheName = properties.getCache().getEhcache().getCacheName();
-            Cache<String, CachedResponse> cache = cacheManager.getCache(cacheName, String.class, CachedResponse.class);
-            return Mono.fromSupplier(() -> cache.get(key))
-                    .filter(Objects::nonNull);
-        };
-    }
-
-    @Bean
-    public BiFunction<String, CachedResponse, Mono<Void>> ehcacheIdempotencyPutFunction(CacheManager cacheManager) {
-        return (key, response) -> {
-            String cacheName = properties.getCache().getEhcache().getCacheName();
-            Cache<String, CachedResponse> cache = cacheManager.getCache(cacheName, String.class, CachedResponse.class);
-            return Mono.fromRunnable(() -> cache.put(key, response));
-        };
-    }
-}
-```
+For more information about cache configuration and available providers, see the [lib-common-cache documentation](https://github.com/firefly-oss/lib-common-cache).
 
 #### Disabling Idempotency
 
