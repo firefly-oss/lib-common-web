@@ -17,30 +17,26 @@
 
 package com.firefly.common.web.idempotency.filter;
 
+import com.firefly.common.cache.config.CacheAutoConfiguration;
 import com.firefly.common.web.TestApplication;
 import com.firefly.common.web.idempotency.annotation.DisableIdempotency;
+import com.firefly.common.web.idempotency.config.IdempotencyAutoConfiguration;
 import com.firefly.common.web.idempotency.config.IdempotencyProperties;
-import com.firefly.common.web.idempotency.config.InMemoryIdempotencyConfig;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
-import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.BodyInserters;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
-import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -51,13 +47,22 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @SpringBootTest(
     classes = {
-        TestApplication.class, 
+        TestApplication.class,
         IdempotencyIntegrationTest.TestConfig.class,
-        InMemoryIdempotencyConfig.class
+        CacheAutoConfiguration.class,
+        IdempotencyAutoConfiguration.class
     },
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {"spring.autoconfigure.exclude=com.firefly.common.web.openapi.OpenAPIConfiguration"}
 )
+@TestPropertySource(properties = {
+    "firefly.cache.enabled=true",
+    "firefly.cache.default-cache-type=CAFFEINE",
+    "firefly.cache.caffeine.idempotency.maximum-size=100",
+    "firefly.cache.caffeine.idempotency.expire-after-write=PT5M",
+    "idempotency.cache.cache-name=idempotency",
+    "idempotency.cache.ttl-hours=1"
+})
 @AutoConfigureWebTestClient
 class IdempotencyIntegrationTest {
 

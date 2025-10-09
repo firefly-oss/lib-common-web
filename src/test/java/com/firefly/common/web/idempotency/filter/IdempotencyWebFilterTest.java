@@ -64,10 +64,6 @@ class IdempotencyWebFilterTest {
         // Create properties
         properties = new IdempotencyProperties();
         properties.getCache().setTtlHours(24);
-        properties.getCache().setMaxEntries(10000);
-        IdempotencyProperties.Redis redis = new IdempotencyProperties.Redis();
-        redis.setEnabled(false);
-        properties.getCache().setRedis(redis);
 
         // Create the filter
         idempotencyWebFilter = new IdempotencyWebFilter(properties, idempotencyCache);

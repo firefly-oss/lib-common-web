@@ -62,8 +62,31 @@ class GlobalExceptionHandlerTest {
             return new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR, "UNEXPECTED_ERROR", "Unexpected error: " + ex.getMessage());
         });
 
-        exceptionHandler = new GlobalExceptionHandler(converterService, Optional.empty());
+        // Create error handling properties with defaults
+        com.firefly.common.web.error.config.ErrorHandlingProperties errorProperties =
+            new com.firefly.common.web.error.config.ErrorHandlingProperties();
+
+        // Create mock environment
+        org.springframework.core.env.Environment environment = org.mockito.Mockito.mock(org.springframework.core.env.Environment.class);
+        org.mockito.Mockito.when(environment.getActiveProfiles()).thenReturn(new String[]{"test"});
+
         objectMapper = new ObjectMapper().findAndRegisterModules();
+
+        // Create error response negotiator
+        com.firefly.common.web.error.service.ErrorResponseNegotiator responseNegotiator =
+            new com.firefly.common.web.error.service.ErrorResponseNegotiator(objectMapper);
+
+        exceptionHandler = new GlobalExceptionHandler(
+            converterService,
+            Optional.empty(),
+            errorProperties,
+            Optional.empty(),
+            Optional.empty(),
+            environment,
+            objectMapper,
+            responseNegotiator,
+            Optional.empty() // errorResponseCache
+        );
 
         // Configure ObjectMapper to handle the date format used in ErrorResponse
         objectMapper.configure(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
