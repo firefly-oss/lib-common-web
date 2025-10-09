@@ -80,12 +80,12 @@ public class InMemoryIdempotencyConfig {
     /**
      * Creates a Cache bean for the idempotency cache.
      * 
-     * @param cacheManager the cache manager
+     * @param idempotencyCacheManager the cache manager
      * @return Cache instance for idempotency
      */
     @Bean
-    public Cache idempotencyCache(CacheManager cacheManager) {
-        return cacheManager.getCache(IDEMPOTENCY_CACHE_NAME);
+    public Cache idempotencyCache(CacheManager idempotencyCacheManager) {
+        return idempotencyCacheManager.getCache(IDEMPOTENCY_CACHE_NAME);
     }
 
     /**
