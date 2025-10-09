@@ -18,6 +18,8 @@
 package com.firefly.common.web.error.converter;
 
 import com.firefly.common.web.error.exceptions.*;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
@@ -37,6 +39,7 @@ import java.util.concurrent.TimeoutException;
  * Converts exceptions related to external service calls to appropriate business exceptions.
  */
 @Component
+@ConditionalOnClass(Exception.class)
 public class ExternalServiceExceptionConverter implements ExceptionConverter<Exception> {
 
     /**

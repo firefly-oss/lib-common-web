@@ -26,13 +26,16 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.NoResultException;
 import jakarta.persistence.PersistenceException;
 import jakarta.persistence.QueryTimeoutException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpServerErrorException;
 
 /**
  * Converter for JPA exceptions.
  * Converts JPA exceptions to appropriate business exceptions.
  */
 @Component
+@ConditionalOnClass(Exception.class)
 public class JpaExceptionConverter implements ExceptionConverter<Exception> {
 
     /**

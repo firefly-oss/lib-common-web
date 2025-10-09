@@ -21,6 +21,7 @@ import com.firefly.common.web.error.exceptions.BusinessException;
 import com.firefly.common.web.error.exceptions.DataIntegrityException;
 import com.firefly.common.web.error.exceptions.OperationTimeoutException;
 import com.firefly.common.web.error.exceptions.ServiceException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.QueryTimeoutException;
@@ -32,6 +33,7 @@ import org.springframework.stereotype.Component;
  * Converts various data access exceptions to the appropriate business exceptions.
  */
 @Component
+@ConditionalOnClass(DataAccessException.class)
 public class DataAccessExceptionConverter implements ExceptionConverter<DataAccessException> {
 
     /**

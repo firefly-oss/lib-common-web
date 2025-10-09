@@ -19,6 +19,7 @@ package com.firefly.common.web.error.converter;
 
 import com.firefly.common.web.error.exceptions.BusinessException;
 import com.firefly.common.web.error.exceptions.ValidationException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.BindException;
 import org.springframework.validation.BindingResult;
@@ -31,6 +32,7 @@ import org.springframework.web.bind.support.WebExchangeBindException;
  * Converts validation exceptions to ValidationException.
  */
 @Component
+@ConditionalOnClass(Exception.class)
 public class ValidationExceptionConverter implements ExceptionConverter<Exception> {
 
     /**

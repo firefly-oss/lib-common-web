@@ -18,6 +18,9 @@
 package com.firefly.common.web.error.examples;
 
 import com.firefly.common.web.error.exceptions.BusinessException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,6 +36,7 @@ import java.util.concurrent.TimeoutException;
  */
 @RestController
 @RequestMapping("/api/examples/exceptions")
+@ConditionalOnClass({DataIntegrityViolationException.class, OptimisticLockingFailureException.class})
 public class ExceptionHandlingController {
 
     private final ExceptionHandlingExample exampleService;

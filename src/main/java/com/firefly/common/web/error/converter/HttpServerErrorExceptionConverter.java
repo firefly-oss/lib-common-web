@@ -21,8 +21,10 @@ import com.firefly.common.web.error.exceptions.BusinessException;
 import com.firefly.common.web.error.exceptions.OperationTimeoutException;
 import com.firefly.common.web.error.exceptions.ServiceException;
 import com.firefly.common.web.error.exceptions.ThirdPartyServiceException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 
 /**
@@ -30,6 +32,7 @@ import org.springframework.web.client.HttpServerErrorException;
  * Converts HTTP server error exceptions to the appropriate business exceptions.
  */
 @Component
+@ConditionalOnClass(HttpServerErrorException.class)
 public class HttpServerErrorExceptionConverter implements ExceptionConverter<HttpServerErrorException> {
 
     /**

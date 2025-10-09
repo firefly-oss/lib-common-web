@@ -18,6 +18,7 @@
 package com.firefly.common.web.error.converter;
 
 import com.firefly.common.web.error.exceptions.*;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -39,6 +40,7 @@ import java.util.stream.Collectors;
  * Converts WebFlux exceptions to appropriate business exceptions.
  */
 @Component
+@ConditionalOnClass(Exception.class)
 public class WebFluxExceptionConverter implements ExceptionConverter<Exception> {
 
     /**

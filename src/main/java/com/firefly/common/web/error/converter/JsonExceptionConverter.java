@@ -25,6 +25,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.stereotype.Component;
 
 /**
@@ -32,6 +33,7 @@ import org.springframework.stereotype.Component;
  * Converts JSON exceptions to InvalidRequestException.
  */
 @Component
+@ConditionalOnClass(JsonProcessingException.class)
 public class JsonExceptionConverter implements ExceptionConverter<JsonProcessingException> {
 
     /**

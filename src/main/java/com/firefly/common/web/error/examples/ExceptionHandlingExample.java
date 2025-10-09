@@ -19,6 +19,7 @@ package com.firefly.common.web.error.examples;
 
 import com.firefly.common.web.error.converter.ExceptionConverterService;
 import com.firefly.common.web.error.exceptions.*;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ import java.util.concurrent.TimeoutException;
  * the exception conversion mechanism.
  */
 @Service
+@ConditionalOnClass({DataIntegrityViolationException.class, OptimisticLockingFailureException.class})
 public class ExceptionHandlingExample {
 
     private final ExceptionConverterService converterService;

@@ -18,6 +18,7 @@
 package com.firefly.common.web.error.converter;
 
 import com.firefly.common.web.error.exceptions.*;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
@@ -27,6 +28,7 @@ import org.springframework.web.client.HttpClientErrorException;
  * Converts HTTP client error exceptions to the appropriate business exceptions.
  */
 @Component
+@ConditionalOnClass(HttpClientErrorException.class)
 public class HttpClientErrorExceptionConverter implements ExceptionConverter<HttpClientErrorException> {
 
     /**

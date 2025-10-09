@@ -19,6 +19,7 @@ package com.firefly.common.web.error.converter;
 
 import com.firefly.common.web.error.exceptions.BusinessException;
 import com.firefly.common.web.error.exceptions.ConcurrencyException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Component;
  * Converts optimistic locking failure exceptions to concurrency exceptions.
  */
 @Component
+@ConditionalOnClass(OptimisticLockingFailureException.class)
 public class OptimisticLockingFailureExceptionConverter implements ExceptionConverter<OptimisticLockingFailureException> {
 
     /**

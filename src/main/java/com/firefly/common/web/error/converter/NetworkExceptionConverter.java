@@ -20,6 +20,7 @@ package com.firefly.common.web.error.converter;
 import com.firefly.common.web.error.exceptions.BusinessException;
 import com.firefly.common.web.error.exceptions.OperationTimeoutException;
 import com.firefly.common.web.error.exceptions.ThirdPartyServiceException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.stereotype.Component;
 
 import java.net.ConnectException;
@@ -31,6 +32,7 @@ import java.net.UnknownHostException;
  * Converts network exceptions to appropriate business exceptions.
  */
 @Component
+@ConditionalOnClass(Exception.class)
 public class NetworkExceptionConverter implements ExceptionConverter<Exception> {
 
     /**

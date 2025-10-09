@@ -61,7 +61,7 @@
         </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
-            <artifactId>spring-jdbc</artifactId>
+            <artifactId>spring-r2dbc</artifactId>
             <optional>true</optional>
         </dependency>
 

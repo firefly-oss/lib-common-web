@@ -20,6 +20,7 @@ package com.firefly.common.web.error.converter;
 import com.firefly.common.web.error.exceptions.AuthorizationException;
 import com.firefly.common.web.error.exceptions.BusinessException;
 import com.firefly.common.web.error.exceptions.UnauthorizedException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AccountExpiredException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -35,6 +36,7 @@ import org.springframework.stereotype.Component;
  * Converts security exceptions to appropriate business exceptions.
  */
 @Component
+@ConditionalOnClass(Exception.class)
 public class SecurityExceptionConverter implements ExceptionConverter<Exception> {
 
     /**
