@@ -51,12 +51,14 @@ The Firefly Common Web Library is a comprehensive Spring Boot starter designed f
 - **Configurable logging levels** for client vs server errors
 
 ### 🔄 Request Idempotency
-- **Automatic idempotency** for POST, PUT, and PATCH requests
+- **Automatic idempotency** for all HTTP methods (GET, POST, PUT, PATCH, DELETE, etc.)
+- **Optional X-Idempotency-Key header**: Works for all methods when the header is provided
 - **Powered by lib-common-cache**: Unified caching abstraction with multiple provider support
 - **Multiple cache providers**: Caffeine (in-memory) and Redis (distributed)
 - **Configurable TTL** and cache size limits
 - **Selective disabling** via `@DisableIdempotency` annotation
 - **Response caching and replay** functionality
+- **Auto-documented in Swagger/OpenAPI** for all endpoints
 
 ### 📝 OpenAPI Integration
 - **Auto-configuration** with environment-aware settings
@@ -141,8 +143,14 @@ public class MyController {
     
     @PostMapping("/api/data")
     public Mono<ResponseEntity<String>> createData(@RequestBody String data) {
-        // Idempotency is automatically applied to POST requests
+        // Idempotency is automatically applied when X-Idempotency-Key header is provided
         return Mono.just(ResponseEntity.ok("Data created"));
+    }
+    
+    @GetMapping("/api/data/{id}")
+    public Mono<ResponseEntity<String>> getData(@PathVariable String id) {
+        // Idempotency also works for GET, DELETE, and all other HTTP methods
+        return Mono.just(ResponseEntity.ok("Data retrieved"));
     }
     
     @PostMapping("/api/special")
@@ -383,7 +391,9 @@ throw new DegradedServiceException(
 
 ### Request Idempotency
 
-Automatic idempotency support for POST, PUT, and PATCH requests using the `X-Idempotency-Key` header.
+Automatic idempotency support for **all HTTP methods** using the optional `X-Idempotency-Key` header.
+
+The idempotency feature works for GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, and TRACE requests. When a request includes the `X-Idempotency-Key` header, the response is cached and subsequent requests with the same key will receive the cached response without re-executing the operation.
 
 **Powered by lib-common-cache**: The idempotency feature now uses the unified caching library (lib-common-cache) which provides a single unified cache interface across multiple cache providers (Caffeine, Redis).
 
