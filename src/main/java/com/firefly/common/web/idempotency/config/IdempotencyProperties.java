@@ -31,10 +31,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * Example configuration:
  * <pre>
- * idempotency:
- *   header-name: X-Idempotency-Key
- *   cache:
- *     ttl-hours: 24  # Time-to-live for cached responses
+ * firefly:
+ *   web:
+ *     idempotency:
+ *       header-name: X-Idempotency-Key
+ *       cache:
+ *         ttl-hours: 24  # Time-to-live for cached responses
  *
  * # Cache provider configuration (handled by lib-common-cache)
  * firefly:
@@ -46,7 +48,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *         expire-after-write: PT24H
  * </pre>
  */
-@ConfigurationProperties(prefix = "idempotency")
+@ConfigurationProperties(prefix = "firefly.web.idempotency")
 public class IdempotencyProperties {
 
     /**
