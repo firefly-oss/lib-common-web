@@ -30,21 +30,23 @@ import java.util.regex.Pattern;
  * 
  * Example configuration:
  * <pre>
- * pii-masking:
- *   enabled: true
- *   mask-character: "*"
- *   preserve-length: true
- *   patterns:
- *     email: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
- *     phone: "\\b\\d{3}[-.]?\\d{3}[-.]?\\d{4}\\b"
- *     ssn: "\\b\\d{3}-?\\d{2}-?\\d{4}\\b"
- *     credit-card: "\\b(?:\\d{4}[-\\s]?){3}\\d{4}\\b"
- *   custom-patterns:
- *     api-key: "(?i)api[_-]?key[\"'\\s]*[:=][\"'\\s]*[a-zA-Z0-9]{20,}"
- *     jwt: "eyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*"
+ * firefly:
+ *   web:
+ *     pii-masking:
+ *       enabled: true
+ *       mask-character: "*"
+ *       preserve-length: true
+ *       patterns:
+ *         email: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+ *         phone: "\\b\\d{3}[-.]?\\d{3}[-.]?\\d{4}\\b"
+ *         ssn: "\\b\\d{3}-?\\d{2}-?\\d{4}\\b"
+ *         credit-card: "\\b(?:\\d{4}[-\\s]?){3}\\d{4}\\b"
+ *       custom-patterns:
+ *         api-key: "(?i)api[_-]?key[\"'\\s]*[:=][\"'\\s]*[a-zA-Z0-9]{20,}"
+ *         jwt: "eyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*"
  * </pre>
  */
-@ConfigurationProperties(prefix = "pii-masking")
+@ConfigurationProperties(prefix = "firefly.web.pii-masking")
 public class PiiMaskingProperties {
 
     /**
