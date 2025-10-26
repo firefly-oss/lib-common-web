@@ -145,7 +145,7 @@ class IdempotencyWebFilterTest {
     }
 
     @Test
-    void shouldAllowNonIdempotentMethods() {
+    void shouldApplyIdempotencyToGetMethod() {
         // Arrange
         String idempotencyKey = "test-key-3";
         MockServerHttpRequest request = MockServerHttpRequest
@@ -157,10 +157,29 @@ class IdempotencyWebFilterTest {
         // Act
         Mono<Void> result = idempotencyWebFilter.filter(exchange, filterChain);
 
-        // Assert
+        // Assert - First request should go through the filter chain
         StepVerifier.create(result)
                 .verifyComplete();
-        verify(filterChain, times(1)).filter(exchange);
+        verify(filterChain, times(1)).filter(any());
+    }
+
+    @Test
+    void shouldApplyIdempotencyToDeleteMethod() {
+        // Arrange
+        String idempotencyKey = "test-key-delete";
+        MockServerHttpRequest request = MockServerHttpRequest
+                .method(HttpMethod.DELETE, "/test/123")
+                .header("X-Idempotency-Key", idempotencyKey)
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        // Act
+        Mono<Void> result = idempotencyWebFilter.filter(exchange, filterChain);
+
+        // Assert - First request should go through the filter chain
+        StepVerifier.create(result)
+                .verifyComplete();
+        verify(filterChain, times(1)).filter(any());
     }
 
     @Test

@@ -45,6 +45,7 @@ class IdempotencyOpenAPICustomizerTest {
     private Operation putOperation;
     private Operation patchOperation;
     private Operation getOperation;
+    private Operation deleteOperation;
 
     @BeforeEach
     void setUp() {
@@ -62,15 +63,17 @@ class IdempotencyOpenAPICustomizerTest {
         putOperation = new Operation().operationId("testPut");
         patchOperation = new Operation().operationId("testPatch");
         getOperation = new Operation().operationId("testGet");
+        deleteOperation = new Operation().operationId("testDelete");
 
         pathItem.setPost(postOperation);
         pathItem.setPut(putOperation);
         pathItem.setPatch(patchOperation);
         pathItem.setGet(getOperation);
+        pathItem.setDelete(deleteOperation);
     }
 
     @Test
-    void shouldAddIdempotencyKeyHeaderToPostPutPatchOperations() {
+    void shouldAddIdempotencyKeyHeaderToAllOperations() {
         // Act
         customizer.customise(openAPI);
 
@@ -90,11 +93,15 @@ class IdempotencyOpenAPICustomizerTest {
         assertNotNull(patchParams);
         assertTrue(patchParams.stream().anyMatch(p -> "X-Idempotency-Key".equals(p.getName()) && "header".equals(p.getIn())));
 
-        // GET operation should NOT have X-Idempotency-Key header
+        // GET operation should also have X-Idempotency-Key header (now supports all methods)
         List<Parameter> getParams = getOperation.getParameters();
-        if (getParams != null) {
-            assertFalse(getParams.stream().anyMatch(p -> "X-Idempotency-Key".equals(p.getName()) && "header".equals(p.getIn())));
-        }
+        assertNotNull(getParams);
+        assertTrue(getParams.stream().anyMatch(p -> "X-Idempotency-Key".equals(p.getName()) && "header".equals(p.getIn())));
+
+        // DELETE operation should have X-Idempotency-Key header
+        List<Parameter> deleteParams = deleteOperation.getParameters();
+        assertNotNull(deleteParams);
+        assertTrue(deleteParams.stream().anyMatch(p -> "X-Idempotency-Key".equals(p.getName()) && "header".equals(p.getIn())));
     }
 
     @Test
@@ -114,10 +121,15 @@ class IdempotencyOpenAPICustomizerTest {
             assertFalse(postParams.stream().anyMatch(p -> "X-Idempotency-Key".equals(p.getName()) && "header".equals(p.getIn())));
         }
 
-        // PUT operation should have X-Idempotency-Key header
+        // PUT operation should still have X-Idempotency-Key header
         List<Parameter> putParams = putOperation.getParameters();
         assertNotNull(putParams);
         assertTrue(putParams.stream().anyMatch(p -> "X-Idempotency-Key".equals(p.getName()) && "header".equals(p.getIn())));
+
+        // GET operation should have X-Idempotency-Key header (no disable extension)
+        List<Parameter> getParams = getOperation.getParameters();
+        assertNotNull(getParams);
+        assertTrue(getParams.stream().anyMatch(p -> "X-Idempotency-Key".equals(p.getName()) && "header".equals(p.getIn())));
     }
 
     @Test
