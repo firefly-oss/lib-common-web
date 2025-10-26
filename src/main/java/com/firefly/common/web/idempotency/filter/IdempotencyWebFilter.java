@@ -27,7 +27,6 @@ import org.reactivestreams.Publisher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -43,23 +42,21 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * WebFilter that provides idempotency for HTTP POST, PUT, and PATCH requests.
+ * WebFilter that provides idempotency for all HTTP requests.
  * It intercepts requests with an X-Idempotency-Key header and ensures that
  * identical requests (with the same key) return the same response.
+ * The X-Idempotency-Key header is optional for all HTTP methods.
  */
 @Component
 @EnableConfigurationProperties(IdempotencyProperties.class)
 public class IdempotencyWebFilter implements WebFilter {
 
     private static final Logger log = LoggerFactory.getLogger(IdempotencyWebFilter.class);
-    private static final List<HttpMethod> IDEMPOTENT_METHODS = Arrays.asList(
-            HttpMethod.POST, HttpMethod.PUT, HttpMethod.PATCH);
 
     private final IdempotencyCache cache;
     private final String idempotencyHeaderName;
@@ -81,12 +78,6 @@ public class IdempotencyWebFilter implements WebFilter {
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         log.debug("IdempotencyWebFilter.filter: Processing request {} {}", request.getMethod(), request.getPath());
-
-        // Only apply to POST, PUT, PATCH methods
-        if (!IDEMPOTENT_METHODS.contains(request.getMethod())) {
-            log.debug("IdempotencyWebFilter.filter: Skipping non-idempotent method {}", request.getMethod());
-            return chain.filter(exchange);
-        }
 
         // First check if this path is handled by a RestController or Router
         return isHandledByController(exchange)
