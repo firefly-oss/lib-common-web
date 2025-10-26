@@ -115,10 +115,12 @@ The library automatically provides these key dependencies:
 
 ```yaml
 # Optional configuration - defaults are provided
-idempotency:
-  header-name: X-Idempotency-Key  # Default header name
-  cache:
-    ttl-hours: 24  # Cache TTL in hours (default: 24)
+firefly:
+  web:
+    idempotency:
+      header-name: X-Idempotency-Key  # Default header name
+      cache:
+        ttl-hours: 24  # Cache TTL in hours (default: 24)
 
 # Cache provider configuration (handled by lib-common-cache)
 firefly:
@@ -402,10 +404,12 @@ The idempotency feature works for GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, 
 #### Configuration Options
 
 ```yaml
-idempotency:
-  header-name: X-Idempotency-Key  # HTTP header name (default)
-  cache:
-    ttl-hours: 24  # Cache TTL in hours (default: 24)
+firefly:
+  web:
+    idempotency:
+      header-name: X-Idempotency-Key  # HTTP header name (default)
+      cache:
+        ttl-hours: 24  # Cache TTL in hours (default: 24)
 
 # Cache provider configuration (handled by lib-common-cache)
 firefly:
@@ -645,44 +649,46 @@ The library includes **39+ pre-built patterns** covering a comprehensive range o
 #### Configuration
 
 ```yaml
-pii-masking:
-  enabled: true  # Enable/disable PII masking globally (default: true)
-  mask-character: "*"  # Character to use for masking (default: *)
-  preserve-length: true  # Preserve original length when masking (default: true)
-  show-characters: 2  # Characters to show at start/end when preserve-length=false
-  case-sensitive: false  # Case sensitivity for pattern matching (default: false)
-  
-  # Automatic logging protection
-  auto-mask-logs: true  # Automatically mask PII in ALL application logs (default: true)
-  
-  # Control what gets masked
-  mask-headers: true  # Mask headers (default: true)
-  mask-bodies: true  # Mask request/response bodies (default: true) 
-  mask-query-params: true  # Mask query parameters (default: true)
-  mask-exceptions: true  # Mask exception messages (default: true)
-  
-  # Built-in patterns (can be overridden) - showing key examples
-  patterns:
-    email: "\\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}\\b"
-    phone-us: "\\b(?:\\+?1[-\\s]?)?(?:\\(?[0-9]{3}\\)?[-\\s]?)?[0-9]{3}[-\\s]?[0-9]{4}\\b"
-    phone-spain: "\\b(?:\\+34[-\\s]?)?(?:[679][0-9]{2}[-\\s]?[0-9]{3}[-\\s]?[0-9]{3})\\b"
-    phone-germany: "\\b(?:\\+49[-\\s]?)?(?:[1-9][0-9]{1,4}[-\\s]?[0-9]{3,}[-\\s]?[0-9]{3,})\\b"
-    ssn: "\\b(?!000|666)[0-8][0-9]{2}-?(?!00)[0-9]{2}-?(?!0000)[0-9]{4}\\b"
-    credit-card: "\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|3[0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\\b"
-    spanish-dni: "\\b[0-9]{8}[A-Za-z]\\b"
-    portuguese-cc: "\\b[0-9]{8}\\s[0-9]\\s[A-Za-z]{2}[0-9]\\b"
-    dutch-bsn: "\\b[0-9]{9}\\b"
-    jwt: "\\beyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*(?:\\.[a-zA-Z0-9_-]*)?\\b"
-    api-key: "(?i)(?:api[_-]?key|token|secret)[\"'\\s]*[:=][\"'\\s]*(?!eyJ)[a-zA-Z0-9]{20,}"
-    ip-address: "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b"
-    mac-address: "\\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\\b"
-    # Note: 39+ patterns available - see full list above
-    
-  # Custom patterns for your organization-specific data
-  custom-patterns:
-    internal-id: "ID-[0-9]{6}"  # Example: mask internal IDs
-    account-number: "ACC-[0-9]{10}"  # Example: mask account numbers
-    # Add more organization-specific patterns as needed
+firefly:
+  web:
+    pii-masking:
+      enabled: true  # Enable/disable PII masking globally (default: true)
+      mask-character: "*"  # Character to use for masking (default: *)
+      preserve-length: true  # Preserve original length when masking (default: true)
+      show-characters: 2  # Characters to show at start/end when preserve-length=false
+      case-sensitive: false  # Case sensitivity for pattern matching (default: false)
+      
+      # Automatic logging protection
+      auto-mask-logs: true  # Automatically mask PII in ALL application logs (default: true)
+      
+      # Control what gets masked
+      mask-headers: true  # Mask headers (default: true)
+      mask-bodies: true  # Mask request/response bodies (default: true) 
+      mask-query-params: true  # Mask query parameters (default: true)
+      mask-exceptions: true  # Mask exception messages (default: true)
+      
+      # Built-in patterns (can be overridden) - showing key examples
+      patterns:
+        email: "\\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}\\b"
+        phone-us: "\\b(?:\\+?1[-\\s]?)?(?:\\(?[0-9]{3}\\)?[-\\s]?)?[0-9]{3}[-\\s]?[0-9]{4}\\b"
+        phone-spain: "\\b(?:\\+34[-\\s]?)?(?:[679][0-9]{2}[-\\s]?[0-9]{3}[-\\s]?[0-9]{3})\\b"
+        phone-germany: "\\b(?:\\+49[-\\s]?)?(?:[1-9][0-9]{1,4}[-\\s]?[0-9]{3,}[-\\s]?[0-9]{3,})\\b"
+        ssn: "\\b(?!000|666)[0-8][0-9]{2}-?(?!00)[0-9]{2}-?(?!0000)[0-9]{4}\\b"
+        credit-card: "\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|3[0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\\b"
+        spanish-dni: "\\b[0-9]{8}[A-Za-z]\\b"
+        portuguese-cc: "\\b[0-9]{8}\\s[0-9]\\s[A-Za-z]{2}[0-9]\\b"
+        dutch-bsn: "\\b[0-9]{9}\\b"
+        jwt: "\\beyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*(?:\\.[a-zA-Z0-9_-]*)?\\b"
+        api-key: "(?i)(?:api[_-]?key|token|secret)[\"'\\s]*[:=][\"'\\s]*(?!eyJ)[a-zA-Z0-9]{20,}"
+        ip-address: "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b"
+        mac-address: "\\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\\b"
+        # Note: 39+ patterns available - see full list above
+        
+      # Custom patterns for your organization-specific data
+      custom-patterns:
+        internal-id: "ID-[0-9]{6}"  # Example: mask internal IDs
+        account-number: "ACC-[0-9]{10}"  # Example: mask account numbers
+        # Add more organization-specific patterns as needed
 ```
 
 #### Usage Examples
@@ -807,20 +813,22 @@ Returns statistics like:
 
 ```yaml
 # Idempotency configuration (main feature of this library)
-idempotency:
-  header-name: X-Idempotency-Key  # HTTP header name for idempotency key
-  cache:
-    ttl-hours: 24  # Time-to-live in hours for cached responses
-    max-entries: 10000  # Maximum entries in in-memory cache
-    redis:
-      enabled: false  # Set to true to use Redis instead of in-memory cache
-    hazelcast:
-      enabled: false  # Set to true to use Hazelcast for distributed caching
-      map-name: idempotencyCache  # Hazelcast IMap name
-    ehcache:
-      enabled: false  # Set to true to use EhCache for local caching with persistence
-      cache-name: idempotencyCache  # EhCache cache name
-      disk-persistent: true  # Enable disk persistence
+firefly:
+  web:
+    idempotency:
+      header-name: X-Idempotency-Key  # HTTP header name for idempotency key
+      cache:
+        ttl-hours: 24  # Time-to-live in hours for cached responses
+        max-entries: 10000  # Maximum entries in in-memory cache
+        redis:
+          enabled: false  # Set to true to use Redis instead of in-memory cache
+        hazelcast:
+          enabled: false  # Set to true to use Hazelcast for distributed caching
+          map-name: idempotencyCache  # Hazelcast IMap name
+        ehcache:
+          enabled: false  # Set to true to use EhCache for local caching with persistence
+          cache-name: idempotencyCache  # EhCache cache name
+          disk-persistent: true  # Enable disk persistence
 
 # Redis configuration (when using Redis cache)
 spring:
