@@ -27,19 +27,15 @@ import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * OpenAPI customizer that adds the Idempotency header to POST, PUT, and PATCH operations.
+ * OpenAPI customizer that adds the Idempotency header to all HTTP operations.
  * It excludes operations that have the {@link DisableIdempotency} annotation.
  */
 @Component
 public class IdempotencyOpenAPICustomizer implements OpenApiCustomizer {
-
-    private static final List<PathItem.HttpMethod> IDEMPOTENT_METHODS = Arrays.asList(
-            PathItem.HttpMethod.POST, PathItem.HttpMethod.PUT, PathItem.HttpMethod.PATCH);
 
     private final String headerName;
 
@@ -61,19 +57,20 @@ public class IdempotencyOpenAPICustomizer implements OpenApiCustomizer {
     @Override
     public void customise(OpenAPI openApi) {
         openApi.getPaths().forEach((path, pathItem) -> {
-            // Process POST operations
-            processOperation(pathItem.getPost(), PathItem.HttpMethod.POST);
-
-            // Process PUT operations
-            processOperation(pathItem.getPut(), PathItem.HttpMethod.PUT);
-
-            // Process PATCH operations
-            processOperation(pathItem.getPatch(), PathItem.HttpMethod.PATCH);
+            // Process all HTTP methods
+            processOperation(pathItem.getGet());
+            processOperation(pathItem.getPost());
+            processOperation(pathItem.getPut());
+            processOperation(pathItem.getPatch());
+            processOperation(pathItem.getDelete());
+            processOperation(pathItem.getHead());
+            processOperation(pathItem.getOptions());
+            processOperation(pathItem.getTrace());
         });
     }
 
-    private void processOperation(Operation operation, PathItem.HttpMethod method) {
-        if (operation == null || !IDEMPOTENT_METHODS.contains(method)) {
+    private void processOperation(Operation operation) {
+        if (operation == null) {
             return;
         }
 
