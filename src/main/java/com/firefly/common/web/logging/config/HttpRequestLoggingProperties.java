@@ -29,21 +29,23 @@ import java.util.Set;
  * 
  * Example configuration:
  * <pre>
- * http-request-logging:
- *   enabled: true
- *   include-headers: true
- *   include-request-body: false
- *   include-response-body: false
- *   max-body-size: 1024
- *   sensitive-headers:
- *     - authorization
- *     - x-api-key
- *   excluded-paths:
- *     - /health
- *     - /actuator/**
+ * firefly:
+ *   web:
+ *     http-request-logging:
+ *       enabled: true
+ *       include-headers: true
+ *       include-request-body: false
+ *       include-response-body: false
+ *       max-body-size: 1024
+ *       sensitive-headers:
+ *         - authorization
+ *         - x-api-key
+ *       excluded-paths:
+ *         - /health
+ *         - /actuator/**
  * </pre>
  */
-@ConfigurationProperties(prefix = "http-request-logging")
+@ConfigurationProperties(prefix = "firefly.web.http-request-logging")
 public class HttpRequestLoggingProperties {
 
     /**
