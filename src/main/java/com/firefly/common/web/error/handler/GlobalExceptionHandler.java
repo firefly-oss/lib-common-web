@@ -439,8 +439,13 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
 
     /**
      * Enriches error response with distributed tracing information.
+     *
+     * @param builder the error response builder
+     * @param exchange the server web exchange
      */
-    private void enrichWithTracingInfo(ErrorResponse.ErrorResponseBuilder builder, ServerWebExchange exchange) {
+    private void enrichWithTracingInfo(Object builder, ServerWebExchange exchange) {
+        @SuppressWarnings("unchecked")
+        var typedBuilder = (ErrorResponse.ErrorResponseBuilder) builder;
         if (!errorProperties.isEnableDistributedTracing()) {
             return;
         }
@@ -463,11 +468,11 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
         }
 
         if (errorProperties.isIncludeCorrelationId()) {
-            builder.traceId(traceId);
+            typedBuilder.traceId(traceId);
         }
 
         if (errorProperties.isIncludeSpanId() && spanId != null) {
-            builder.spanId(spanId);
+            typedBuilder.spanId(spanId);
         }
 
         // Extract correlation ID from headers
@@ -476,41 +481,51 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
             if (correlationId == null) {
                 correlationId = exchange.getRequest().getHeaders().getFirst("X-Request-ID");
             }
-            builder.correlationId(correlationId);
+            typedBuilder.correlationId(correlationId);
         }
 
         // Generate request ID
         if (errorProperties.isIncludeRequestId()) {
             String requestId = exchange.getRequest().getId();
-            builder.requestId(requestId);
+            typedBuilder.requestId(requestId);
         }
 
         // Add instance identifier
         if (errorProperties.getInstanceId() != null) {
-            builder.instance(errorProperties.getInstanceId());
+            typedBuilder.instance(errorProperties.getInstanceId());
         }
     }
 
     /**
      * Enriches error response with error categorization and severity.
+     *
+     * @param builder the error response builder
+     * @param ex the business exception
      */
-    private void enrichWithCategorization(ErrorResponse.ErrorResponseBuilder builder, BusinessException ex) {
+    private void enrichWithCategorization(Object builder, BusinessException ex) {
+        @SuppressWarnings("unchecked")
+        var typedBuilder = (ErrorResponse.ErrorResponseBuilder) builder;
         // Determine error category
         ErrorResponse.ErrorCategory category = determineCategory(ex);
-        builder.category(category);
+        typedBuilder.category(category);
 
         // Determine error severity
         ErrorResponse.ErrorSeverity severity = determineSeverity(ex);
-        builder.severity(severity);
+        typedBuilder.severity(severity);
     }
 
     /**
      * Enriches error response with resilience pattern information.
+     *
+     * @param builder the error response builder
+     * @param ex the business exception
      */
-    private void enrichWithResilienceInfo(ErrorResponse.ErrorResponseBuilder builder, BusinessException ex) {
+    private void enrichWithResilienceInfo(Object builder, BusinessException ex) {
+        @SuppressWarnings("unchecked")
+        var typedBuilder = (ErrorResponse.ErrorResponseBuilder) builder;
         // Handle circuit breaker exceptions
         if (ex instanceof CircuitBreakerException) {
-            builder.retryable(true);
+            typedBuilder.retryable(true);
             Map<String, Object> metadata = ex.getMetadata();
 
             var cbInfo = ErrorResponse.CircuitBreakerInfo.builder()
@@ -522,17 +537,17 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
                     .fallbackSuggestion((String) metadata.get("fallbackSuggestion"))
                     .build();
 
-            builder.circuitBreakerInfo(cbInfo);
+            typedBuilder.circuitBreakerInfo(cbInfo);
 
             Integer retryAfter = (Integer) metadata.get("retryAfter");
             if (retryAfter != null) {
-                builder.retryAfter(retryAfter);
+                typedBuilder.retryAfter(retryAfter);
             }
         }
 
         // Handle rate limit exceptions
         if (ex instanceof RateLimitException || ex instanceof QuotaExceededException) {
-            builder.retryable(true);
+            typedBuilder.retryable(true);
             Map<String, Object> metadata = ex.getMetadata();
 
             var rateLimitInfo = ErrorResponse.RateLimitInfo.builder()
@@ -543,70 +558,80 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
                     .limitType((String) metadata.getOrDefault("limitType", "unknown"))
                     .build();
 
-            builder.rateLimitInfo(rateLimitInfo);
+            typedBuilder.rateLimitInfo(rateLimitInfo);
 
             Integer retryAfter = (Integer) metadata.get("retryAfter");
             if (retryAfter != null) {
-                builder.retryAfter(retryAfter);
+                typedBuilder.retryAfter(retryAfter);
             }
         }
 
         // Handle retry exhausted exceptions
         if (ex instanceof RetryExhaustedException) {
-            builder.retryable(false);
+            typedBuilder.retryable(false);
             Map<String, Object> metadata = ex.getMetadata();
             Integer retryAfter = (Integer) metadata.get("retryAfter");
             if (retryAfter != null) {
-                builder.retryAfter(retryAfter);
+                typedBuilder.retryAfter(retryAfter);
             }
         }
 
         // Handle bulkhead exceptions
         if (ex instanceof BulkheadException) {
-            builder.retryable(true);
+            typedBuilder.retryable(true);
             Map<String, Object> metadata = ex.getMetadata();
             Integer retryAfter = (Integer) metadata.getOrDefault("retryAfter", 5);
-            builder.retryAfter(retryAfter);
+            typedBuilder.retryAfter(retryAfter);
         }
 
         // Determine if retryable for other exceptions
-        if (builder.build().getRetryable() == null) {
-            builder.retryable(isRetryable(ex));
+        if (typedBuilder.build().getRetryable() == null) {
+            typedBuilder.retryable(isRetryable(ex));
         }
     }
 
     /**
      * Enriches error response with suggestions.
+     *
+     * @param builder the error response builder
+     * @param ex the business exception
      */
-    private void enrichWithSuggestions(ErrorResponse.ErrorResponseBuilder builder, BusinessException ex) {
+    private void enrichWithSuggestions(Object builder, BusinessException ex) {
+        @SuppressWarnings("unchecked")
+        var typedBuilder = (ErrorResponse.ErrorResponseBuilder) builder;
         if (!errorProperties.isIncludeSuggestions()) {
             return;
         }
 
         Map<String, Object> metadata = ex.getMetadata();
         if (metadata != null && metadata.containsKey("suggestion")) {
-            builder.suggestion(maskSensitiveData(metadata.get("suggestion").toString()));
+            typedBuilder.suggestion(maskSensitiveData(metadata.get("suggestion").toString()));
             return;
         }
 
         // Default suggestions based on status code
         String suggestion = getDefaultSuggestion(ex.getStatus());
         if (suggestion != null) {
-            builder.suggestion(suggestion);
+            typedBuilder.suggestion(suggestion);
         }
     }
 
     /**
      * Enriches error response with documentation links.
+     *
+     * @param builder the error response builder
+     * @param ex the business exception
      */
-    private void enrichWithDocumentation(ErrorResponse.ErrorResponseBuilder builder, BusinessException ex) {
+    private void enrichWithDocumentation(Object builder, BusinessException ex) {
+        @SuppressWarnings("unchecked")
+        var typedBuilder = (ErrorResponse.ErrorResponseBuilder) builder;
         if (!errorProperties.isIncludeDocumentation()) {
             return;
         }
 
         String docBase = errorProperties.getDocumentationBaseUrl();
         if (ex.getCode() != null && docBase != null) {
-            builder.documentation(docBase + "/" + ex.getCode().toLowerCase());
+            typedBuilder.documentation(docBase + "/" + ex.getCode().toLowerCase());
         }
 
         if (errorProperties.isIncludeHelpUrl() && errorProperties.getHelpBaseUrl() != null) {
@@ -614,19 +639,25 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
             if (ex.getCode() != null) {
                 helpUrl += "/" + ex.getCode().toLowerCase();
             }
-            builder.helpUrl(helpUrl);
+            typedBuilder.helpUrl(helpUrl);
         }
     }
 
     /**
      * Enriches error response with environment-specific debug information.
+     *
+     * @param builder the error response builder
+     * @param ex the business exception
+     * @param exchange the server web exchange
      */
-    private void enrichWithDebugInfo(ErrorResponse.ErrorResponseBuilder builder, BusinessException ex,
+    private void enrichWithDebugInfo(Object builder, BusinessException ex,
                                       ServerWebExchange exchange) {
+        @SuppressWarnings("unchecked")
+        var typedBuilder = (ErrorResponse.ErrorResponseBuilder) builder;
         // Only include debug info in non-production environments
         if (!isProductionEnvironment()) {
             if (errorProperties.isIncludeStackTrace() && ex.getCause() != null) {
-                builder.stackTrace(getStackTraceAsString(ex));
+                typedBuilder.stackTrace(getStackTraceAsString(ex));
             }
 
             if (errorProperties.isIncludeDebugInfo()) {
@@ -641,11 +672,11 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
                     debugInfo.put("causeMessage", ex.getCause().getMessage());
                 }
 
-                builder.debugInfo(debugInfo);
+                typedBuilder.debugInfo(debugInfo);
             }
 
             if (errorProperties.isIncludeExceptionCause() && ex.getCause() != null) {
-                builder.details("Caused by: " + ex.getCause().getMessage());
+                typedBuilder.details("Caused by: " + ex.getCause().getMessage());
             }
         }
     }
@@ -839,11 +870,18 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
     /**
      * Builds an error response with caching support.
      * Checks cache first, and if not found, builds and caches the response.
+     *
+     * @param exchange the server web exchange
+     * @param ex the business exception
+     * @param builder the error response builder
+     * @return a Mono with the error response
      */
     private Mono<ErrorResponse> buildErrorResponseWithCache(
             ServerWebExchange exchange,
             BusinessException ex,
-            ErrorResponse.ErrorResponseBuilder builder) {
+            Object builder) {
+        @SuppressWarnings("unchecked")
+        var typedBuilder = (ErrorResponse.ErrorResponseBuilder) builder;
 
         String errorCode = ex.getCode();
         int status = ex.getStatus().value();
@@ -855,14 +893,14 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
                     .get(errorCode, status, path)
                     .switchIfEmpty(Mono.defer(() -> {
                         // Cache miss - build and cache the response
-                        ErrorResponse response = builder.build();
+                        ErrorResponse response = typedBuilder.build();
                         return errorResponseCache.get()
                                 .put(response)
                                 .thenReturn(response);
                     }));
         } else {
             // Caching disabled - just build the response
-            return Mono.just(builder.build());
+            return Mono.just(typedBuilder.build());
         }
     }
 
