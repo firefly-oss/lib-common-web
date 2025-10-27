@@ -122,14 +122,14 @@ firefly:
       cache:
         ttl-hours: 24  # Cache TTL in hours (default: 24)
 
-# Cache provider configuration (handled by lib-common-cache)
-firefly:
   cache:
+    enabled: true
     default-cache-type: CAFFEINE  # Options: CAFFEINE, REDIS, AUTO, NOOP
     caffeine:
       default:  # Single unified cache
         maximum-size: 10000
         expire-after-write: PT24H
+        record-stats: true
 
 # Note: HTTP request logging is handled by Spring Boot's built-in logging
 logging:
@@ -436,9 +436,10 @@ The idempotency feature uses **lib-common-cache**, a unified caching library tha
 ```yaml
 firefly:
   cache:
+    enabled: true
     default-cache-type: CAFFEINE
     caffeine:
-      idempotency:
+      default:
         maximum-size: 10000
         expire-after-write: PT24H
         record-stats: true
@@ -474,15 +475,16 @@ implementation 'io.lettuce:lettuce-core'
 ```yaml
 firefly:
   cache:
+    enabled: true
     default-cache-type: REDIS
     redis:
-      idempotency:
+      default:
         host: localhost
         port: 6379
         database: 0
         password: # Optional
-        key-prefix: "firefly:idempotency"
-        default-ttl: PT24H
+        ssl: false
+        timeout: 2000ms
 ```
 
 ##### Automatic Cache Selection
@@ -819,26 +821,25 @@ firefly:
       header-name: X-Idempotency-Key  # HTTP header name for idempotency key
       cache:
         ttl-hours: 24  # Time-to-live in hours for cached responses
-        max-entries: 10000  # Maximum entries in in-memory cache
-        redis:
-          enabled: false  # Set to true to use Redis instead of in-memory cache
-        hazelcast:
-          enabled: false  # Set to true to use Hazelcast for distributed caching
-          map-name: idempotencyCache  # Hazelcast IMap name
-        ehcache:
-          enabled: false  # Set to true to use EhCache for local caching with persistence
-          cache-name: idempotencyCache  # EhCache cache name
-          disk-persistent: true  # Enable disk persistence
 
-# Redis configuration (when using Redis cache)
-spring:
-  data:
-    redis:
-      host: localhost
-      port: 6379
-      password: # Optional
-      timeout: 2000ms
-      database: 0
+  cache:
+    enabled: true
+    default-cache-type: CAFFEINE  # Options: CAFFEINE, REDIS, AUTO, NOOP
+    caffeine:
+      default:
+        maximum-size: 10000
+        expire-after-write: PT24H
+        record-stats: true
+    # For Redis configuration:
+    # default-cache-type: REDIS
+    # redis:
+    #   default:
+    #     host: localhost
+    #     port: 6379
+    #     database: 0
+    #     password: # Optional
+    #     ssl: false
+    #     timeout: 2000ms
 
 # OpenAPI/Swagger configuration
 springdoc:
@@ -883,17 +884,26 @@ public class OrderController {
 
 ### Custom Idempotency Configuration
 
-```java
-@Configuration
-public class IdempotencyConfig {
-    
-    @Bean
-    @ConditionalOnProperty(value = "getfirefly.iomon.web.idempotency.cache-type", havingValue = "redis")
-    public IdempotencyCache redisIdempotencyCache(ReactiveRedisTemplate<String, CachedResponse> redisTemplate,
-                                                  IdempotencyProperties properties) {
-        return new RedisIdempotencyCache(redisTemplate, properties);
-    }
-}
+The idempotency feature now uses **lib-common-cache** which provides a unified caching abstraction. You typically don't need custom configuration, but if you need to customize the cache behavior, configure it through the `firefly.cache.*` properties:
+
+```yaml
+firefly:
+  web:
+    idempotency:
+      header-name: X-Custom-Idempotency-Key  # Custom header name
+      cache:
+        ttl-hours: 48  # Custom TTL
+
+  cache:
+    enabled: true
+    default-cache-type: REDIS
+    redis:
+      default:
+        host: redis.example.com
+        port: 6379
+        database: 1
+        password: ${REDIS_PASSWORD}
+        ssl: true
 ```
 
 ### Request Logging Customization
