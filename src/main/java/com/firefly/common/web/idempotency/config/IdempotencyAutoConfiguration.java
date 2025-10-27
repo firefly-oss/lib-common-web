@@ -96,12 +96,18 @@ public class IdempotencyAutoConfiguration {
      */
     @Bean
     @ConditionalOnClass(FireflyCacheManager.class)
+    @ConditionalOnBean(FireflyCacheManager.class)
     @ConditionalOnMissingBean(IdempotencyCache.class)
     public IdempotencyCache idempotencyCache(
             ObjectProvider<FireflyCacheManager> cacheManagerProvider,
             IdempotencyProperties properties) {
 
-        FireflyCacheManager cacheManager = cacheManagerProvider.getObject();
+        FireflyCacheManager cacheManager = cacheManagerProvider.getIfUnique();
+        
+        if (cacheManager == null) {
+            log.warn("FireflyCacheManager not available, idempotency cache will not be created");
+            throw new IllegalStateException("FireflyCacheManager is required but not available");
+        }
 
         log.info("Configuring idempotency cache using lib-common-cache");
         log.info("Cache type: {}, TTL: {} hours",
