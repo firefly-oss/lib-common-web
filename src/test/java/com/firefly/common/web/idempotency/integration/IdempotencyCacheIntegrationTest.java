@@ -47,8 +47,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestPropertySource(properties = {
     "firefly.cache.enabled=true",
     "firefly.cache.default-cache-type=CAFFEINE",
-    "idempotency.header-name=X-Idempotency-Key",
-    "idempotency.cache.ttl-hours=1"
+    "firefly.web.idempotency.header-name=X-Idempotency-Key",
+    "firefly.web.idempotency.cache.ttl-hours=1"
 })
 class IdempotencyCacheIntegrationTest {
 
@@ -90,7 +90,7 @@ class IdempotencyCacheIntegrationTest {
     void shouldCacheResponseWithRealCaffeine() {
         // Given
         String key = "test-key-1";
-        CachedResponse response = new CachedResponse(200, "test body".getBytes(), MediaType.APPLICATION_JSON);
+        CachedResponse response = new CachedResponse(200, "test body".getBytes(), MediaType.APPLICATION_JSON.toString());
 
         // When - Put response in cache
         StepVerifier.create(idempotencyCache.put(key, response))
@@ -102,7 +102,7 @@ class IdempotencyCacheIntegrationTest {
                 assertThat(cachedResponse).isNotNull();
                 assertThat(cachedResponse.getStatus()).isEqualTo(200);
                 assertThat(cachedResponse.getBody()).isEqualTo("test body".getBytes());
-                assertThat(cachedResponse.getContentType()).isEqualTo(MediaType.APPLICATION_JSON);
+                assertThat(cachedResponse.getContentType()).isEqualTo(MediaType.APPLICATION_JSON.toString());
             })
             .verifyComplete();
     }
@@ -122,8 +122,8 @@ class IdempotencyCacheIntegrationTest {
         // Given
         String key1 = "key-1";
         String key2 = "key-2";
-        CachedResponse response1 = new CachedResponse(200, "response 1".getBytes(), MediaType.APPLICATION_JSON);
-        CachedResponse response2 = new CachedResponse(201, "response 2".getBytes(), MediaType.TEXT_PLAIN);
+        CachedResponse response1 = new CachedResponse(200, "response 1".getBytes(), MediaType.APPLICATION_JSON.toString());
+        CachedResponse response2 = new CachedResponse(201, "response 2".getBytes(), MediaType.TEXT_PLAIN.toString());
 
         // When - Cache two different responses
         idempotencyCache.put(key1, response1).block();
@@ -149,7 +149,7 @@ class IdempotencyCacheIntegrationTest {
     void shouldEvictCacheManually() {
         // Given
         String key = "evict-test-key";
-        CachedResponse response = new CachedResponse(200, "test".getBytes(), MediaType.APPLICATION_JSON);
+        CachedResponse response = new CachedResponse(200, "test".getBytes(), MediaType.APPLICATION_JSON.toString());
 
         // When - Cache and then evict
         idempotencyCache.put(key, response).block();
@@ -175,8 +175,8 @@ class IdempotencyCacheIntegrationTest {
         // Given
         String key1 = "clear-key-1";
         String key2 = "clear-key-2";
-        CachedResponse response1 = new CachedResponse(200, "test1".getBytes(), MediaType.APPLICATION_JSON);
-        CachedResponse response2 = new CachedResponse(200, "test2".getBytes(), MediaType.APPLICATION_JSON);
+        CachedResponse response1 = new CachedResponse(200, "test1".getBytes(), MediaType.APPLICATION_JSON.toString());
+        CachedResponse response2 = new CachedResponse(200, "test2".getBytes(), MediaType.APPLICATION_JSON.toString());
 
         // When - Cache multiple entries
         idempotencyCache.put(key1, response1).block();
@@ -199,7 +199,7 @@ class IdempotencyCacheIntegrationTest {
         // Given
         String key = "direct-cache-key";
         String prefixedKey = "::idempotency::" + key;
-        CachedResponse value = new CachedResponse(200, "direct test".getBytes(), MediaType.APPLICATION_JSON);
+        CachedResponse value = new CachedResponse(200, "direct test".getBytes(), MediaType.APPLICATION_JSON.toString());
 
         // When - Put value directly in cache with prefixed key
         StepVerifier.create(cacheManager.put(prefixedKey, value))
@@ -229,7 +229,7 @@ class IdempotencyCacheIntegrationTest {
     void shouldVerifyCaffeineStatistics() {
         // Given
         String key = "stats-key";
-        CachedResponse response = new CachedResponse(200, "stats test".getBytes(), MediaType.APPLICATION_JSON);
+        CachedResponse response = new CachedResponse(200, "stats test".getBytes(), MediaType.APPLICATION_JSON.toString());
 
         // When - Perform cache operations (miss, then hit)
         idempotencyCache.get(key).block();  // Miss
@@ -255,7 +255,7 @@ class IdempotencyCacheIntegrationTest {
         for (int i = 0; i < largeBody.length; i++) {
             largeBody[i] = (byte) (i % 256);
         }
-        CachedResponse response = new CachedResponse(201, largeBody, MediaType.APPLICATION_OCTET_STREAM);
+        CachedResponse response = new CachedResponse(201, largeBody, MediaType.APPLICATION_OCTET_STREAM.toString());
 
         // When - Cache complex response
         StepVerifier.create(idempotencyCache.put(key, response))
@@ -267,7 +267,7 @@ class IdempotencyCacheIntegrationTest {
                 assertThat(cached.getStatus()).isEqualTo(201);
                 assertThat(cached.getBody()).hasSize(1024);
                 assertThat(cached.getBody()).isEqualTo(largeBody);
-                assertThat(cached.getContentType()).isEqualTo(MediaType.APPLICATION_OCTET_STREAM);
+                assertThat(cached.getContentType()).isEqualTo(MediaType.APPLICATION_OCTET_STREAM.toString());
             })
             .verifyComplete();
     }
@@ -276,7 +276,7 @@ class IdempotencyCacheIntegrationTest {
     void shouldVerifyKeyFormatWithCacheName() {
         // Given
         String idempotencyKey = "test-key-format";
-        CachedResponse response = new CachedResponse(200, "test".getBytes(), MediaType.APPLICATION_JSON);
+        CachedResponse response = new CachedResponse(200, "test".getBytes(), MediaType.APPLICATION_JSON.toString());
 
         // When - Cache using idempotency cache
         StepVerifier.create(idempotencyCache.put(idempotencyKey, response))

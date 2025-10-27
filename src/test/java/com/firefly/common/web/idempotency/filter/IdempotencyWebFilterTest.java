@@ -117,7 +117,7 @@ class IdempotencyWebFilterTest {
         CachedResponse cachedResponse = new CachedResponse(
                 HttpStatus.OK.value(),
                 responseBody,
-                MediaType.APPLICATION_JSON
+                MediaType.APPLICATION_JSON.toString()
         );
 
         // Put the response in the cache directly

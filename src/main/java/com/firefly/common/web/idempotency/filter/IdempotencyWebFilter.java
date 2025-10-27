@@ -24,15 +24,12 @@ import com.firefly.common.web.idempotency.model.CachedResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.reactivestreams.Publisher;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.http.server.reactive.ServerHttpResponseDecorator;
-import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.reactive.HandlerMapping;
 import org.springframework.web.server.ServerWebExchange;
@@ -51,9 +48,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * It intercepts requests with an X-Idempotency-Key header and ensures that
  * identical requests (with the same key) return the same response.
  * The X-Idempotency-Key header is optional for all HTTP methods.
+ *
+ * <p>This filter is automatically configured by {@link com.firefly.common.web.idempotency.config.IdempotencyAutoConfiguration}
+ * when lib-common-cache is available on the classpath. It will not be created if the required
+ * cache dependencies are not available, preventing application startup failures.</p>
  */
-@Component
-@EnableConfigurationProperties(IdempotencyProperties.class)
 public class IdempotencyWebFilter implements WebFilter {
 
     private static final Logger log = LoggerFactory.getLogger(IdempotencyWebFilter.class);
@@ -68,7 +67,6 @@ public class IdempotencyWebFilter implements WebFilter {
      * @param properties the idempotency configuration properties
      * @param cache the idempotency cache implementation
      */
-    @Autowired
     public IdempotencyWebFilter(IdempotencyProperties properties, IdempotencyCache cache) {
         this.cache = cache;
         this.idempotencyHeaderName = properties.getHeaderName();
@@ -161,13 +159,14 @@ public class IdempotencyWebFilter implements WebFilter {
 
                     // Store the response in the cache
                     MediaType contentType = exchange.getResponse().getHeaders().getContentType();
+                    String contentTypeStr = contentType != null ? contentType.toString() : null;
                     int statusCode = exchange.getResponse().getStatusCode() != null ?
                             exchange.getResponse().getStatusCode().value() : HttpStatus.OK.value();
 
-                    log.debug("IdempotencyWebFilter.writeWith: Caching response for key: {}, status: {}, contentType: {}, bodyLength: {}", 
-                             idempotencyKey, statusCode, contentType, content.length);
+                    log.debug("IdempotencyWebFilter.writeWith: Caching response for key: {}, status: {}, contentType: {}, bodyLength: {}",
+                             idempotencyKey, statusCode, contentTypeStr, content.length);
 
-                    CachedResponse cachedResponse = new CachedResponse(statusCode, content, contentType);
+                    CachedResponse cachedResponse = new CachedResponse(statusCode, content, contentTypeStr);
                     cache.put(idempotencyKey, cachedResponse)
                         .doOnError(e -> {
                             // Log the error but don't fail the request
@@ -214,16 +213,16 @@ public class IdempotencyWebFilter implements WebFilter {
     }
 
     private Mono<Void> returnCachedResponse(ServerWebExchange exchange, CachedResponse cachedResponse) {
-        log.debug("IdempotencyWebFilter.returnCachedResponse: Returning cached response with status: {}, contentType: {}, bodyLength: {}", 
-                 cachedResponse.getStatus(), 
-                 cachedResponse.getContentType(), 
+        log.debug("IdempotencyWebFilter.returnCachedResponse: Returning cached response with status: {}, contentType: {}, bodyLength: {}",
+                 cachedResponse.getStatus(),
+                 cachedResponse.getContentType(),
                  (cachedResponse.getBody() != null ? cachedResponse.getBody().length : 0));
 
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.valueOf(cachedResponse.getStatus()));
 
         if (cachedResponse.getContentType() != null) {
-            response.getHeaders().setContentType(cachedResponse.getContentType());
+            response.getHeaders().setContentType(MediaType.parseMediaType(cachedResponse.getContentType()));
         }
 
         DataBuffer buffer = response.bufferFactory().wrap(cachedResponse.getBody());

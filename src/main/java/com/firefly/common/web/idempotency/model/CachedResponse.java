@@ -20,7 +20,6 @@ package com.firefly.common.web.idempotency.model;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.springframework.http.MediaType;
 
 /**
  * Data Transfer Object (DTO) for storing cached HTTP responses.
@@ -31,19 +30,19 @@ import org.springframework.http.MediaType;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CachedResponse {
-    
+
     /**
      * HTTP status code of the cached response
      */
     private int status;
-    
+
     /**
      * Response body as byte array
      */
     private byte[] body;
-    
+
     /**
-     * Content type of the response
+     * Content type of the response as a string (e.g., "application/json")
      */
-    private MediaType contentType;
+    private String contentType;
 }
