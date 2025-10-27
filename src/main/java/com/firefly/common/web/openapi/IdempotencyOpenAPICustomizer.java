@@ -24,8 +24,6 @@ import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.parameters.Parameter;
 import org.springdoc.core.customizers.OpenApiCustomizer;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Optional;
@@ -33,23 +31,20 @@ import java.util.Optional;
 /**
  * OpenAPI customizer that adds the Idempotency header to all HTTP operations.
  * It excludes operations that have the {@link DisableIdempotency} annotation.
+ *
+ * <p>This customizer is automatically configured by {@link com.firefly.common.web.idempotency.config.IdempotencyAutoConfiguration}
+ * when lib-common-cache is available on the classpath. It will not be created if the required
+ * cache dependencies are not available, preventing application startup failures.</p>
  */
-@Component
 public class IdempotencyOpenAPICustomizer implements OpenApiCustomizer {
 
     private final String headerName;
 
     /**
-     * Default constructor for non-Spring usage (e.g., unit tests). Uses the default header name.
+     * Creates a new IdempotencyOpenAPICustomizer with the specified properties.
+     *
+     * @param properties the idempotency configuration properties
      */
-    public IdempotencyOpenAPICustomizer() {
-        this.headerName = "X-Idempotency-Key";
-    }
-
-    /**
-     * Spring constructor that reads the header name from IdempotencyProperties.
-     */
-    @Autowired
     public IdempotencyOpenAPICustomizer(IdempotencyProperties properties) {
         this.headerName = properties.getHeaderName();
     }

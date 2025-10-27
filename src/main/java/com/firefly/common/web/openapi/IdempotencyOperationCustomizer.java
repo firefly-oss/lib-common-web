@@ -20,15 +20,17 @@ package com.firefly.common.web.openapi;
 import com.firefly.common.web.idempotency.annotation.DisableIdempotency;
 import io.swagger.v3.oas.models.Operation;
 import org.springdoc.core.customizers.OperationCustomizer;
-import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 
 /**
  * Operation customizer that marks operations with the DisableIdempotency annotation.
  * This customizer adds an extension to the OpenAPI operation that can be used by
  * the IdempotencyOpenAPICustomizer to exclude these operations from idempotency.
+ *
+ * <p>This customizer is automatically configured by {@link com.firefly.common.web.idempotency.config.IdempotencyAutoConfiguration}
+ * when lib-common-cache is available on the classpath. It will not be created if the required
+ * cache dependencies are not available, preventing application startup failures.</p>
  */
-@Component
 public class IdempotencyOperationCustomizer implements OperationCustomizer {
 
     public static final String DISABLE_IDEMPOTENCY_EXTENSION = "x-disable-idempotency";

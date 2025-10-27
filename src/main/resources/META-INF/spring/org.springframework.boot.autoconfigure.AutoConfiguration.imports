@@ -1,5 +1,6 @@
 com.firefly.common.web.openapi.OpenAPIConfiguration
 com.firefly.common.web.configuration.ExceptionHandlerConfiguration
 com.firefly.common.web.idempotency.config.IdempotencyAutoConfiguration
+com.firefly.common.web.idempotency.config.IdempotencyOpenAPIAutoConfiguration
 com.firefly.common.web.logging.config.PiiMaskingAutoConfiguration
 com.firefly.common.web.logging.filter.HttpRequestLoggingWebFilter

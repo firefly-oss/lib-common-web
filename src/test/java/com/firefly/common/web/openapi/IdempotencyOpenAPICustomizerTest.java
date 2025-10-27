@@ -17,6 +17,7 @@
 
 package com.firefly.common.web.openapi;
 
+import com.firefly.common.web.idempotency.config.IdempotencyProperties;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
@@ -49,7 +50,9 @@ class IdempotencyOpenAPICustomizerTest {
 
     @BeforeEach
     void setUp() {
-        customizer = new IdempotencyOpenAPICustomizer();
+        IdempotencyProperties properties = new IdempotencyProperties();
+        properties.setHeaderName("X-Idempotency-Key");
+        customizer = new IdempotencyOpenAPICustomizer(properties);
 
         // Set up OpenAPI structure
         openAPI = new OpenAPI();
