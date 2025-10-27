@@ -16,6 +16,7 @@
 
 package com.firefly.common.web.idempotency.config;
 
+import com.firefly.common.cache.core.CacheType;
 import com.firefly.common.cache.manager.FireflyCacheManager;
 import com.firefly.common.web.idempotency.cache.IdempotencyCache;
 import com.firefly.common.web.idempotency.filter.IdempotencyWebFilter;
@@ -96,7 +97,9 @@ class IdempotencyAutoConfigurationDiagnosticTest {
         @Bean
         public FireflyCacheManager fireflyCacheManager() {
             FireflyCacheManager mock = mock(FireflyCacheManager.class);
-            when(mock.getCacheType()).thenReturn("Mock Cache");
+            when(mock.getCacheType()).thenReturn(CacheType.CAFFEINE);
+            when(mock.getCacheName()).thenReturn("default");
+            when(mock.isAvailable()).thenReturn(true);
             return mock;
         }
     }
