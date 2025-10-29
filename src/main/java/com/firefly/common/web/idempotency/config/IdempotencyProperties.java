@@ -52,6 +52,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class IdempotencyProperties {
 
     /**
+     * Whether the idempotency module is enabled. Defaults to true.
+     */
+    private boolean enabled = true;
+
+    /**
      * Name of the HTTP header carrying the idempotency key. Default is "X-Idempotency-Key".
      */
     private String headerName = "X-Idempotency-Key";
@@ -60,6 +65,14 @@ public class IdempotencyProperties {
      * Cache configuration properties
      */
     private Cache cache = new Cache();
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
 
     public String getHeaderName() {
         return headerName;
