@@ -399,7 +399,14 @@ The idempotency feature works for GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, 
 
 **Powered by lib-common-cache**: The idempotency feature now uses the unified caching library (lib-common-cache) which provides a single unified cache interface across multiple cache providers (Caffeine, Redis).
 
-**Key Namespacing**: All idempotency cache entries are stored with keys prefixed as `:idempotency:` which, combined with the cache's own prefix (e.g., `firefly:cache:default:`), results in keys like `firefly:cache:default::idempotency:{idempotencyKey}` to namespace them within the shared cache managed by FireflyCacheManager.
+**Dedicated HTTP Idempotency Cache**: This library creates a dedicated cache named `http-idempotency` with its own isolated key prefix `firefly:web:idempotency` to prevent collisions with other application caches. This HTTP idempotency cache is **distinct from webhook idempotency caches** that may be created by microservices (e.g., `common-platform-webhooks-mgmt` creates its own `webhook-idempotency` cache for webhook event deduplication).
+
+**Cache Isolation**: Each cache type serves a specific purpose:
+- `http-idempotency` (this library): Generic HTTP request deduplication for all endpoints
+- `webhook-idempotency` (webhooks service): Webhook-specific event deduplication
+- Other application caches: Business logic caching
+
+All caches can coexist safely due to unique key prefixes and cache names.
 
 #### Configuration Options
 

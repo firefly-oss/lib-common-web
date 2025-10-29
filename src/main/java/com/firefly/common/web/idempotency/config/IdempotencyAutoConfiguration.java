@@ -25,7 +25,6 @@ import com.firefly.common.web.idempotency.cache.IdempotencyCache;
 import com.firefly.common.web.idempotency.filter.IdempotencyWebFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
@@ -34,6 +33,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Lazy;
 
 import java.time.Duration;
 
@@ -47,6 +47,11 @@ import java.time.Duration;
  * <p>The cache provider (Caffeine, Redis, etc.) is configured through lib-common-cache
  * properties (firefly.cache.*). This configuration only handles the idempotency-specific
  * setup.</p>
+ *
+ * <p><strong>Cache Isolation:</strong> This creates a dedicated cache named "http-idempotency"
+ * with its own isolated key prefix "firefly:web:idempotency". This is distinct from webhook
+ * idempotency caches (e.g., "webhook-idempotency") that may be created by microservices.
+ * Each cache serves a specific purpose and they coexist safely without collision.</p>
  *
  * <p>OpenAPI customizers are configured separately in {@link IdempotencyOpenAPIAutoConfiguration}
  * so they can be available even when caching is not configured.</p>
@@ -70,8 +75,7 @@ import java.time.Duration;
  *         record-stats: true
  * </pre>
  */
-@AutoConfiguration
-@AutoConfigureAfter(CacheAutoConfiguration.class)
+@AutoConfiguration(after = CacheAutoConfiguration.class)
 @EnableConfigurationProperties(IdempotencyProperties.class)
 @ConditionalOnClass({FireflyCacheManager.class, CacheManagerFactory.class})
 public class IdempotencyAutoConfiguration {
@@ -79,39 +83,52 @@ public class IdempotencyAutoConfiguration {
     private static final Logger log = LoggerFactory.getLogger(IdempotencyAutoConfiguration.class);
 
     public IdempotencyAutoConfiguration() {
-        log.info("IdempotencyAutoConfiguration loaded - checking for FireflyCacheManager bean...");
+        log.info("IdempotencyAutoConfiguration loaded - creating dedicated cache for HTTP idempotency");
     }
 
     /**
      * Creates a dedicated cache manager for HTTP idempotency.
      * <p>
      * This cache manager is independent from other cache managers in the application,
-     * with its own key prefix "firefly:http:idempotency" to avoid collisions.
+     * with its own key prefix "firefly:web:idempotency" to avoid collisions.
      * <p>
      * Uses the CacheManagerFactory to create the cache with proper isolation.
+     * <p>
+     * <strong>Important:</strong> This HTTP idempotency cache is distinct from webhook
+     * idempotency caches (e.g., "webhook-idempotency" created by webhooks microservices).
+     * Each cache serves a different purpose:
+     * <ul>
+     *   <li>http-idempotency: Generic HTTP request deduplication for all endpoints</li>
+     *   <li>webhook-idempotency: Webhook-specific event deduplication</li>
+     * </ul>
+     * Both caches can coexist safely due to unique names and key prefixes.
      *
      * @param factory the cache manager factory
      * @param properties the idempotency configuration properties
      * @return a dedicated cache manager for HTTP idempotency
      */
     @Bean("httpIdempotencyCacheManager")
-    @ConditionalOnBean(CacheManagerFactory.class)
     @ConditionalOnMissingBean(name = "httpIdempotencyCacheManager")
     public FireflyCacheManager httpIdempotencyCacheManager(
             CacheManagerFactory factory,
             IdempotencyProperties properties) {
 
-        // Create dedicated cache with descriptive information
         Duration ttl = Duration.ofHours(properties.getCache().getTtlHours());
         String description = String.format(
                 "HTTP Request Idempotency Cache - Prevents duplicate HTTP requests (TTL: %d hours)",
                 properties.getCache().getTtlHours()
         );
+
+        log.info("Creating dedicated HTTP idempotency cache:");
+        log.info("   • Cache name: http-idempotency");
+        log.info("   • Key prefix: firefly:web:idempotency");
+        log.info("   • TTL: {} hours", properties.getCache().getTtlHours());
+        log.info("   • Preferred type: REDIS (fallback to Caffeine)");
         
         return factory.createCacheManager(
                 "http-idempotency",
                 CacheType.REDIS,  // Prefer Redis for distributed idempotency
-                "firefly:http:idempotency",
+                "firefly:web:idempotency",
                 ttl,
                 description,
                 "lib-common-web.IdempotencyAutoConfiguration"
