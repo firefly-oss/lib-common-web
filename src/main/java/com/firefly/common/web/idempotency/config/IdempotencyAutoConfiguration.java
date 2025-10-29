@@ -17,6 +17,8 @@
 package com.firefly.common.web.idempotency.config;
 
 import com.firefly.common.cache.config.CacheAutoConfiguration;
+import com.firefly.common.cache.core.CacheType;
+import com.firefly.common.cache.factory.CacheManagerFactory;
 import com.firefly.common.cache.manager.FireflyCacheManager;
 import com.firefly.common.web.idempotency.cache.FireflyCacheIdempotencyAdapter;
 import com.firefly.common.web.idempotency.cache.IdempotencyCache;
@@ -24,6 +26,7 @@ import com.firefly.common.web.idempotency.filter.IdempotencyWebFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -31,6 +34,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+
+import java.time.Duration;
 
 /**
  * Auto-configuration for the idempotency module using lib-common-cache.
@@ -66,8 +71,9 @@ import org.springframework.context.annotation.Bean;
  * </pre>
  */
 @AutoConfiguration
+@AutoConfigureAfter(CacheAutoConfiguration.class)
 @EnableConfigurationProperties(IdempotencyProperties.class)
-@ConditionalOnClass(FireflyCacheManager.class)
+@ConditionalOnClass({FireflyCacheManager.class, CacheManagerFactory.class})
 public class IdempotencyAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(IdempotencyAutoConfiguration.class);
@@ -77,42 +83,60 @@ public class IdempotencyAutoConfiguration {
     }
 
     /**
-     * Creates the IdempotencyCache bean using lib-common-cache.
+     * Creates a dedicated cache manager for HTTP idempotency.
+     * <p>
+     * This cache manager is independent from other cache managers in the application,
+     * with its own key prefix "firefly:http:idempotency" to avoid collisions.
+     * <p>
+     * Uses the CacheManagerFactory to create the cache with proper isolation.
      *
-     * <p>This adapter wraps the FireflyCacheManager to provide idempotency caching
-     * functionality. The actual cache provider (Caffeine, Redis, etc.) is determined
-     * by the lib-common-cache configuration in the microservice.</p>
+     * @param factory the cache manager factory
+     * @param properties the idempotency configuration properties
+     * @return a dedicated cache manager for HTTP idempotency
+     */
+    @Bean("httpIdempotencyCacheManager")
+    @ConditionalOnBean(CacheManagerFactory.class)
+    @ConditionalOnMissingBean(name = "httpIdempotencyCacheManager")
+    public FireflyCacheManager httpIdempotencyCacheManager(
+            CacheManagerFactory factory,
+            IdempotencyProperties properties) {
+
+        // Create dedicated cache with descriptive information
+        Duration ttl = Duration.ofHours(properties.getCache().getTtlHours());
+        String description = String.format(
+                "HTTP Request Idempotency Cache - Prevents duplicate HTTP requests (TTL: %d hours)",
+                properties.getCache().getTtlHours()
+        );
+        
+        return factory.createCacheManager(
+                "http-idempotency",
+                CacheType.REDIS,  // Prefer Redis for distributed idempotency
+                "firefly:http:idempotency",
+                ttl,
+                description,
+                "lib-common-web.IdempotencyAutoConfiguration"
+        );
+    }
+
+    /**
+     * Creates the IdempotencyCache bean using the dedicated HTTP idempotency cache manager.
+     * <p>
+     * This ensures HTTP idempotency is completely isolated from other caches in the application.
      *
-     * <p>This bean is only created when FireflyCacheManager class is available and
-     * a FireflyCacheManager bean exists (i.e., when lib-common-cache is properly
-     * configured in the microservice).</p>
-     *
-     * <p>Uses ObjectProvider to handle lazy bean resolution, ensuring the bean is
-     * created after CacheAutoConfiguration has run.</p>
-     *
-     * @param cacheManagerProvider provider for the Firefly cache manager from lib-common-cache
+     * @param cacheManager the dedicated HTTP idempotency cache manager
      * @param properties the idempotency configuration properties
      * @return the idempotency cache implementation
      */
     @Bean
-    @ConditionalOnClass(FireflyCacheManager.class)
-    @ConditionalOnBean(FireflyCacheManager.class)
+    @ConditionalOnBean(name = "httpIdempotencyCacheManager")
     @ConditionalOnMissingBean(IdempotencyCache.class)
     public IdempotencyCache idempotencyCache(
-            ObjectProvider<FireflyCacheManager> cacheManagerProvider,
+            @Qualifier("httpIdempotencyCacheManager") FireflyCacheManager cacheManager,
             IdempotencyProperties properties) {
 
-        FireflyCacheManager cacheManager = cacheManagerProvider.getIfUnique();
-        
-        if (cacheManager == null) {
-            log.warn("FireflyCacheManager not available, idempotency cache will not be created");
-            throw new IllegalStateException("FireflyCacheManager is required but not available");
-        }
-
-        log.info("Configuring idempotency cache using lib-common-cache");
-        log.info("Cache type: {}, TTL: {} hours",
-                cacheManager.getCacheType(),
-                properties.getCache().getTtlHours());
+        log.info("Configuring idempotency cache adapter");
+        log.info("   • Cache type: {}", cacheManager.getCacheType());
+        log.info("   • Cache name: {}", cacheManager.getCacheName());
 
         return new FireflyCacheIdempotencyAdapter(cacheManager, properties);
     }
