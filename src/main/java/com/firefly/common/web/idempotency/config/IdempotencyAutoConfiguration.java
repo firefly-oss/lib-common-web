@@ -123,11 +123,11 @@ public class IdempotencyAutoConfiguration {
         log.info("   • Cache name: http-idempotency");
         log.info("   • Key prefix: firefly:web:idempotency");
         log.info("   • TTL: {} hours", properties.getCache().getTtlHours());
-        log.info("   • Preferred type: REDIS (fallback to Caffeine)");
+        log.info("   • Type: AUTO (will use available provider)");
         
         return factory.createCacheManager(
                 "http-idempotency",
-                CacheType.REDIS,  // Prefer Redis for distributed idempotency
+                CacheType.AUTO,  // Auto-detect: use Redis if available, otherwise Caffeine
                 "firefly:web:idempotency",
                 ttl,
                 description,
