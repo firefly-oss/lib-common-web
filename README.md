@@ -60,6 +60,12 @@ The Firefly Common Web Library is a comprehensive Spring Boot starter designed f
 - **Response caching and replay** functionality
 - **Auto-documented in Swagger/OpenAPI** for all endpoints
 
+### Idempotency cache isolation
+- lib-common-web creates a dedicated HTTP idempotency cache manager (bean: `httpIdempotencyCacheManager`) using lib-common-cache’s `CacheManagerFactory`.
+- It uses an isolated key prefix (e.g., `firefly:web:idempotency`) and its own TTL.
+- Toggle with `firefly.web.idempotency.enabled=true|false`.
+- This design prevents conflicts with other caches (e.g., webhook idempotency) even when imported transitively.
+
 ### 📝 OpenAPI Integration
 - **Auto-configuration** with environment-aware settings
 - **Security scheme integration** for API documentation
