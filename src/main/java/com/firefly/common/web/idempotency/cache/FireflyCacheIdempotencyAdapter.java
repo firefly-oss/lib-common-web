@@ -54,11 +54,6 @@ public class FireflyCacheIdempotencyAdapter implements IdempotencyCache {
     public FireflyCacheIdempotencyAdapter(FireflyCacheManager cacheManager, IdempotencyProperties properties) {
         this.cacheManager = cacheManager;
         this.ttl = Duration.ofHours(properties.getCache().getTtlHours());
-
-        log.info("Initialized FireflyCacheIdempotencyAdapter");
-        log.info("  • Cache type: {}", cacheManager.getCacheType());
-        log.info("  • TTL: {} hours", properties.getCache().getTtlHours());
-        log.info("  • Key prefix: {}", KEY_PREFIX);
     }
 
     @Override

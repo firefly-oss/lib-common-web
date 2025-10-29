@@ -82,9 +82,7 @@ public class IdempotencyAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(IdempotencyAutoConfiguration.class);
 
-    public IdempotencyAutoConfiguration() {
-        log.info("IdempotencyAutoConfiguration loaded - creating dedicated cache for HTTP idempotency");
-    }
+    // No-arg constructor
 
     /**
      * Creates a dedicated cache manager for HTTP idempotency.
@@ -114,24 +112,13 @@ public class IdempotencyAutoConfiguration {
             IdempotencyProperties properties) {
 
         Duration ttl = Duration.ofHours(properties.getCache().getTtlHours());
-        String description = String.format(
-                "HTTP Request Idempotency Cache - Prevents duplicate HTTP requests (TTL: %d hours)",
-                properties.getCache().getTtlHours()
-        );
-
-        log.info("Creating dedicated HTTP idempotency cache:");
-        log.info("   • Cache name: http-idempotency");
-        log.info("   • Key prefix: firefly:web:idempotency");
-        log.info("   • TTL: {} hours", properties.getCache().getTtlHours());
-        log.info("   • Type: AUTO (will use available provider)");
-        
         return factory.createCacheManager(
                 "http-idempotency",
-                CacheType.AUTO,  // Auto-detect: use Redis if available, otherwise Caffeine
+                CacheType.AUTO,
                 "firefly:web:idempotency",
                 ttl,
-                description,
-                "lib-common-web.IdempotencyAutoConfiguration"
+                "HTTP idempotency cache",
+                "lib-common-web"
         );
     }
 
@@ -150,11 +137,6 @@ public class IdempotencyAutoConfiguration {
     public IdempotencyCache idempotencyCache(
             @Qualifier("httpIdempotencyCacheManager") FireflyCacheManager cacheManager,
             IdempotencyProperties properties) {
-
-        log.info("Configuring idempotency cache adapter");
-        log.info("   • Cache type: {}", cacheManager.getCacheType());
-        log.info("   • Cache name: {}", cacheManager.getCacheName());
-
         return new FireflyCacheIdempotencyAdapter(cacheManager, properties);
     }
 
@@ -176,10 +158,6 @@ public class IdempotencyAutoConfiguration {
     public IdempotencyWebFilter idempotencyWebFilter(
             IdempotencyProperties properties,
             IdempotencyCache cache) {
-
-        log.info("Configuring idempotency web filter with header: {}",
-                properties.getHeaderName());
-
         return new IdempotencyWebFilter(properties, cache);
     }
 }
