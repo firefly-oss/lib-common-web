@@ -91,6 +91,36 @@
       "type": "java.lang.Boolean",
       "description": "Whether to include query parameters in logs.",
       "defaultValue": true
+    },
+    {
+      "name": "firefly.conditions-report.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether to enable the Spring Boot conditions evaluation report on application startup.",
+      "defaultValue": false
+    },
+    {
+      "name": "firefly.conditions-report.show-negative",
+      "type": "java.lang.Boolean",
+      "description": "Whether to show conditions that did not match (inactive auto-configurations).",
+      "defaultValue": true
+    },
+    {
+      "name": "firefly.conditions-report.show-details",
+      "type": "java.lang.Boolean",
+      "description": "Whether to show detailed explanations for each condition.",
+      "defaultValue": true
+    },
+    {
+      "name": "firefly.conditions-report.summary-only",
+      "type": "java.lang.Boolean",
+      "description": "Whether to show only a summary instead of detailed report.",
+      "defaultValue": false
+    },
+    {
+      "name": "firefly.conditions-report.use-colors",
+      "type": "java.lang.Boolean",
+      "description": "Whether to use ANSI colors in console output for the conditions report.",
+      "defaultValue": true
     }
   ],
   "hints": []

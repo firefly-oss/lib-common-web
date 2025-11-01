@@ -4,3 +4,4 @@ com.firefly.common.web.idempotency.config.IdempotencyAutoConfiguration
 com.firefly.common.web.idempotency.config.IdempotencyOpenAPIAutoConfiguration
 com.firefly.common.web.logging.config.PiiMaskingAutoConfiguration
 com.firefly.common.web.logging.filter.HttpRequestLoggingWebFilter
+com.firefly.common.web.conditions.config.ConditionsReportAutoConfiguration
