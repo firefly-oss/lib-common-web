@@ -20,19 +20,22 @@ import com.firefly.common.web.conditions.listener.ConditionsReportListener;
 import com.firefly.common.web.conditions.service.ConditionsReportService;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
 /**
  * Auto-configuration for the Conditions Evaluation Report feature.
- * 
- * <p>This configuration is activated when the property 
+ *
+ * <p>This configuration is activated when the property
  * {@code firefly.conditions-report.enabled} is set to {@code true}.</p>
- * 
+ *
  * <p>The report shows which Spring Boot auto-configurations were activated
  * and which were not, organized by technology categories with detailed
  * explanations.</p>
- * 
+ *
+ * <p>The {@link ConditionsReportProperties} bean is registered by
+ * {@link ConditionsReportPropertiesConfiguration} which is always loaded,
+ * ensuring properties are available even when this feature is disabled.</p>
+ *
  * <p>Example configuration:</p>
  * <pre>
  * firefly:
@@ -44,9 +47,8 @@ import org.springframework.context.annotation.Bean;
  *     use-colors: true           # Use ANSI colors in console output
  * </pre>
  */
-@AutoConfiguration
-@EnableConfigurationProperties(ConditionsReportProperties.class)
-@ConditionalOnProperty(prefix = "firefly.conditions-report", name = "enabled", havingValue = "true")
+@AutoConfiguration(after = ConditionsReportPropertiesConfiguration.class)
+@ConditionalOnProperty(prefix = "firefly.conditions-report", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class ConditionsReportAutoConfiguration {
 
     /**

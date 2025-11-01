@@ -30,7 +30,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ConditionsReportAutoConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(ConditionsReportAutoConfiguration.class));
+            .withConfiguration(AutoConfigurations.of(
+                    ConditionsReportPropertiesConfiguration.class,
+                    ConditionsReportAutoConfiguration.class
+            ));
 
     @Test
     void shouldNotLoadBeansWhenDisabled() {
