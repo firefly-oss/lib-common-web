@@ -14,6 +14,7 @@ A production-ready Spring Boot starter library for reactive web applications, pr
   - [OpenAPI Integration](#openapi-integration)
   - [HTTP Request Logging](#http-request-logging)
   - [PII Data Masking](#pii-data-masking)
+  - [Conditions Evaluation Report](#conditions-evaluation-report)
 - [Configuration](#configuration)
 - [Usage Examples](#usage-examples)
 - [Testing](#testing)
@@ -60,6 +61,12 @@ The Firefly Common Web Library is a comprehensive Spring Boot starter designed f
 - **Response caching and replay** functionality
 - **Auto-documented in Swagger/OpenAPI** for all endpoints
 
+### Idempotency cache isolation
+- lib-common-web creates a dedicated HTTP idempotency cache manager (bean: `httpIdempotencyCacheManager`) using lib-common-cache’s `CacheManagerFactory`.
+- It uses an isolated key prefix (e.g., `firefly:web:idempotency`) and its own TTL.
+- Toggle with `firefly.web.idempotency.enabled=true|false`.
+- This design prevents conflicts with other caches (e.g., webhook idempotency) even when imported transitively.
+
 ### 📝 OpenAPI Integration
 - **Auto-configuration** with environment-aware settings
 - **Security scheme integration** for API documentation
@@ -79,6 +86,18 @@ The Firefly Common Web Library is a comprehensive Spring Boot starter designed f
 - **Multiple masking strategies** (preserve length, partial reveal, custom mask characters)
 - **Automatic logging protection** - automatically masks PII in ALL application logs and stdout
 - **Integration with logging** to protect sensitive data in logs and exception messages
+
+### 📋 Conditions Evaluation Report
+- **Spring Boot auto-configuration visibility** - See which configurations activated and why
+- **Technology categorization** - Organized by Web, Databases, Messaging, Security, etc.
+- **Detailed explanations** - Understand what each auto-configuration does
+- **Condition type analysis** - See which condition types are used (OnClass, OnProperty, OnBean, etc.)
+- **Actionable advice** - Get specific tips on how to fix inactive configurations
+- **Missing dependency detection** - Identifies missing classes and required properties
+- **Professional console output** - Clean, structured, and color-coded reports
+- **Educational tips** - Learn about Spring Boot conditions and best practices
+- **Configurable verbosity** - Summary or detailed views with optional negative matches
+- **Disabled by default** - Enable only when needed for troubleshooting or documentation
 
 ## Installation
 
@@ -816,6 +835,187 @@ Returns statistics like:
 }
 ```
 
+### Conditions Evaluation Report
+
+A professional diagnostic tool that shows which Spring Boot auto-configurations were activated during application startup and which were not. This helps developers understand exactly what technologies are loaded, troubleshoot configuration issues, and document the application's technology stack.
+
+#### Features
+
+- **Technology categorization**: Auto-configurations organized by category
+  - Web & HTTP (WebFlux, Netty, Tomcat, etc.)
+  - Databases & Data Access (JDBC, R2DBC, JPA, MongoDB, Redis, etc.)
+  - Security & Authentication (Spring Security, OAuth2, JWT)
+  - Caching (Caffeine, Redis)
+  - Messaging & Events (Kafka, RabbitMQ, JMS)
+  - Observability & Monitoring (Actuator, Metrics, Tracing)
+  - Serialization & JSON (Jackson, Gson)
+  - Validation
+  - API Documentation (OpenAPI, Swagger)
+  - Logging
+  - Firefly Custom (lib-common-web features)
+  - Other
+
+- **Detailed explanations**: Each auto-configuration includes a human-readable description
+- **Condition type analysis**: Shows which Spring Boot conditions are used (OnClassCondition, OnPropertyCondition, OnBeanCondition, etc.)
+- **Actionable advice**: Provides specific tips on how to activate inactive configurations
+  - Missing classes detection with dependency suggestions
+  - Required properties extraction with configuration examples
+  - Technology-specific guidance (datasource, Redis, Kafka, etc.)
+- **Activation reasons**: For inactive configurations, see exactly why they didn't activate
+- **Educational section**: Learn about Spring Boot conditions and best practices
+- **Professional output**: Clean, structured console output with optional ANSI colors
+- **Flexible reporting**: Choose between summary or detailed views
+- **Disabled by default**: Only activates when explicitly enabled
+
+#### Configuration
+
+```yaml
+firefly:
+  conditions-report:
+    enabled: true              # Enable the report (default: false)
+    show-negative: true        # Show inactive configurations (default: true)
+    show-details: true         # Show detailed explanations (default: true)
+    summary-only: false        # Show only summary, not details (default: false)
+    use-colors: true           # Use ANSI colors in output (default: true)
+```
+
+#### Example Output
+
+**Summary Mode** (`summary-only: true`):
+
+```
+================================================================================
+           SPRING BOOT CONDITIONS EVALUATION REPORT - SUMMARY
+================================================================================
+
+WEB & HTTP                           7 active |   2 inactive
+DATABASES & DATA ACCESS              3 active |   8 inactive
+SECURITY & AUTHENTICATION            0 active |   5 inactive
+CACHING                              2 active |   1 inactive
+MESSAGING & EVENTS                   0 active |   4 inactive
+OBSERVABILITY & MONITORING           5 active |   2 inactive
+SERIALIZATION & JSON                 3 active |   0 inactive
+VALIDATION                           1 active |   0 inactive
+API DOCUMENTATION                    2 active |   0 inactive
+FIREFLY CUSTOM                       6 active |   0 inactive
+
+--------------------------------------------------------------------------------
+TOTAL: 29 active, 22 inactive
+================================================================================
+```
+
+**Detailed Mode** (default):
+
+```
+================================================================================
+              SPRING BOOT CONDITIONS EVALUATION REPORT
+================================================================================
+
+WEB & HTTP (7 active, 2 inactive)
+--------------------------------------------------------------------------------
+[ACTIVE]   WebFluxAutoConfiguration
+           Spring WebFlux reactive web framework
+           Conditions: OnClassCondition, OnWebApplicationCondition
+
+[ACTIVE]   NettyAutoConfiguration
+           Netty reactive HTTP server
+           Conditions: OnClassCondition
+
+[ACTIVE]   ReactiveWebServerFactoryAutoConfiguration
+           Reactive web server factory configuration
+           Conditions: OnWebApplicationCondition
+
+[INACTIVE] ServletWebServerFactoryAutoConfiguration
+           Servlet-based web server (excluded for WebFlux)
+           Conditions: OnClassCondition, OnWebApplicationCondition
+           • OnWebApplicationCondition: required type SERVLET not found
+           💡 Tip: Requires servlet web context (add spring-boot-starter-web).
+
+DATABASES & DATA ACCESS (3 active, 8 inactive)
+--------------------------------------------------------------------------------
+[ACTIVE]   R2dbcAutoConfiguration
+           Reactive Relational Database Connectivity
+           Conditions: OnClassCondition
+
+[INACTIVE] JdbcTemplateAutoConfiguration
+           JDBC database connectivity
+           Conditions: OnClassCondition
+           • OnClassCondition: did not find 'org.springframework.jdbc.core.JdbcTemplate'
+           💡 Tip: Missing classes: org.springframework.jdbc.core.JdbcTemplate. Add dependency to pom.xml/build.gradle.
+
+FIREFLY CUSTOM (6 active, 0 inactive)
+--------------------------------------------------------------------------------
+[ACTIVE]   OpenAPIConfiguration
+           OpenAPI/Swagger documentation configuration
+           Conditions: OnClassCondition, OnPropertyCondition
+
+[ACTIVE]   ExceptionHandlerConfiguration
+           Global exception handler for standardized error responses
+           Conditions: OnWebApplicationCondition
+
+[ACTIVE]   IdempotencyAutoConfiguration
+           HTTP idempotency support using X-Idempotency-Key header
+           Conditions: OnPropertyCondition
+
+[ACTIVE]   PiiMaskingAutoConfiguration
+           PII (Personally Identifiable Information) masking in logs
+           Conditions: OnPropertyCondition
+
+[ACTIVE]   HttpRequestLoggingWebFilter
+           HTTP request/response logging filter
+           Conditions: OnClassCondition
+
+[ACTIVE]   ConditionsReportAutoConfiguration
+           Conditions evaluation report (this feature)
+           Conditions: OnPropertyCondition
+
+================================================================================
+SUMMARY: 29 configurations active, 22 inactive
+================================================================================
+
+CONDITION TYPES ANALYSIS
+--------------------------------------------------------------------------------
+  OnClassCondition         :  45 matched,  18 failed - Checks if classes are present on classpath
+  OnPropertyCondition      :  12 matched,   5 failed - Checks if properties match expected values
+  OnBeanCondition          :   8 matched,   3 failed - Checks if beans exist or are missing
+  OnWebApplicationCondition:   6 matched,   2 failed - Checks web application type (servlet/reactive)
+  OnResourceCondition      :   2 matched,   0 failed - Checks if resources exist
+
+UNDERSTANDING SPRING BOOT CONDITIONS
+--------------------------------------------------------------------------------
+Common Condition Types:
+  • OnClassCondition - Checks if specific classes are on the classpath
+    Use: @ConditionalOnClass when you want to activate only if a library is present
+    Fix: Add the required dependency to your build file
+
+  • OnPropertyCondition - Checks if properties are set with specific values
+    Use: @ConditionalOnProperty for feature flags and configuration-based activation
+    Fix: Set the property in application.yml or application.properties
+
+  • OnBeanCondition - Checks if specific beans exist in the context
+    Use: @ConditionalOnBean/@ConditionalOnMissingBean for conditional bean creation
+    Fix: Ensure the required bean is defined or remove the dependency
+
+  • OnWebApplicationCondition - Checks the type of web application
+    Use: @ConditionalOnWebApplication for web-specific configurations
+    Fix: Ensure you have a web starter (servlet or reactive)
+
+Best Practices:
+  ✓ Use @ConditionalOnClass for optional dependencies
+  ✓ Use @ConditionalOnProperty for feature toggles
+  ✓ Use @ConditionalOnMissingBean to allow user overrides
+  ✓ Combine conditions with @ConditionalOnExpression for complex logic
+  ✓ Order matters - use @AutoConfigureAfter/@AutoConfigureBefore
+```
+
+#### Use Cases
+
+1. **Troubleshooting**: Understand why a specific auto-configuration didn't activate
+2. **Documentation**: Generate a technology stack report for your application
+3. **Learning**: See what Spring Boot is doing under the hood
+4. **Validation**: Verify that expected technologies are loaded correctly
+5. **Onboarding**: Help new developers understand the application's configuration
+
 ## Configuration
 
 ### Complete Configuration Reference
@@ -847,6 +1047,14 @@ firefly:
     #     password: # Optional
     #     ssl: false
     #     timeout: 2000ms
+
+  # Conditions Evaluation Report (disabled by default)
+  conditions-report:
+    enabled: false             # Enable to see auto-configuration report on startup
+    show-negative: true        # Show configurations that didn't activate
+    show-details: true         # Show detailed explanations
+    summary-only: false        # Set to true for summary view only
+    use-colors: true           # Use ANSI colors in console output
 
 # OpenAPI/Swagger configuration
 springdoc:

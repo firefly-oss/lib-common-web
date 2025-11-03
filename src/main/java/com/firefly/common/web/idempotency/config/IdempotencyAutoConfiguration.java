@@ -78,6 +78,7 @@ import java.time.Duration;
 @AutoConfiguration(after = CacheAutoConfiguration.class)
 @EnableConfigurationProperties(IdempotencyProperties.class)
 @ConditionalOnClass({FireflyCacheManager.class, CacheManagerFactory.class})
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(prefix = "firefly.web.idempotency", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class IdempotencyAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(IdempotencyAutoConfiguration.class);
