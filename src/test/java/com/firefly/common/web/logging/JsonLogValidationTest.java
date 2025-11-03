@@ -51,10 +51,10 @@ class JsonLogValidationTest {
 
     @BeforeEach
     void setUp() {
+        objectMapper = new ObjectMapper();
         properties = new HttpRequestLoggingProperties();
         properties.setEnabled(true);
-        filter = new HttpRequestLoggingWebFilter(properties, Optional.empty());
-        objectMapper = new ObjectMapper();
+        filter = new HttpRequestLoggingWebFilter(properties, Optional.empty(), objectMapper);
     }
 
     @Test

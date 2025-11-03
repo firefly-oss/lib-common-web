@@ -73,31 +73,11 @@ public class HttpRequestLoggingWebFilter implements WebFilter {
     private final ObjectMapper objectMapper;
 
     public HttpRequestLoggingWebFilter(HttpRequestLoggingProperties properties, 
-                                     Optional<PiiMaskingService> piiMaskingService) {
+                                     Optional<PiiMaskingService> piiMaskingService,
+                                       ObjectMapper objectMapper) {
         this.properties = properties;
         this.piiMaskingService = piiMaskingService;
-        this.objectMapper = createObjectMapper();
-    }
-
-    /**
-     * Creates a properly configured ObjectMapper for JSON logging.
-     * Ensures valid JSON output by handling special characters, null values, and other edge cases.
-     */
-    private ObjectMapper createObjectMapper() {
-        ObjectMapper mapper = new ObjectMapper();
-        
-        // Configure to handle special characters properly
-        mapper.getFactory().configure(JsonGenerator.Feature.ESCAPE_NON_ASCII, true);
-        mapper.getFactory().configure(JsonGenerator.Feature.QUOTE_NON_NUMERIC_NUMBERS, true);
-        
-        // Handle null values gracefully
-        mapper.configure(SerializationFeature.WRITE_NULL_MAP_VALUES, false);
-        mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
-        
-        // Ensure deterministic output
-        mapper.configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
-        
-        return mapper;
+        this.objectMapper = objectMapper;
     }
 
     /**

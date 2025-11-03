@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.http.server.reactive.MockServerHttpResponse;
@@ -52,10 +53,10 @@ class JsonValidityTest {
 
     @BeforeEach
     void setUp() {
+        objectMapper = new ObjectMapper();
         properties = new HttpRequestLoggingProperties();
         properties.setEnabled(true);
-        filter = new HttpRequestLoggingWebFilter(properties, Optional.empty());
-        objectMapper = new ObjectMapper();
+        filter = new HttpRequestLoggingWebFilter(properties, Optional.empty(), objectMapper);
     }
 
     @Test

@@ -17,6 +17,7 @@
 
 package com.firefly.common.web.logging.filter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.firefly.common.web.logging.config.HttpRequestLoggingProperties;
 import com.firefly.common.web.logging.service.PiiMaskingService;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,11 +52,14 @@ class HttpRequestLoggingWebFilterTest {
     private HttpRequestLoggingProperties properties;
     private HttpRequestLoggingWebFilter filter;
 
+    @Mock
+    ObjectMapper objectMapper;
+
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
         properties = new HttpRequestLoggingProperties();
-        filter = new HttpRequestLoggingWebFilter(properties, Optional.empty());
+        filter = new HttpRequestLoggingWebFilter(properties, Optional.empty(), objectMapper);
     }
 
     @Test
